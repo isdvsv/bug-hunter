@@ -118,6 +118,7 @@ On first run, Bug Hunter checks for the key and runs a smoke test. If missing, i
 /bug-hunter --staged                    # Scan staged files (pre-commit check)
 /bug-hunter --fix src/                   # Find bugs AND auto-fix them
 /bug-hunter --fix -b feature-xyz        # Find + fix on branch diff
+/bug-hunter --fix --approve src/        # Find + fix, but approve each fix manually
 /bug-hunter --loop src/                  # Loop mode: audit until 100% coverage
 /bug-hunter --loop --fix src/            # Loop mode: find + fix until clean
 ```

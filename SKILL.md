@@ -1,7 +1,7 @@
 ---
 name: bug-hunter
 description: "Run adversarial bug hunting on your codebase with optional auto-fix. Uses parallel agent teams (Recon, Hunters, Skeptics, Referee) to find and verify real bugs, then optionally fixes them with parallel Fixer agents and test verification. Invoke with /bug-hunter, /bug-hunter --fix, /bug-hunter [path], /bug-hunter -b <branch>, or /bug-hunter --staged."
-argument-hint: "[path | -b <branch> [--base <base-branch>] | --staged | --fix | --loop]"
+argument-hint: "[path | -b <branch> [--base <base-branch>] | --staged | --fix | --loop | --approve]"
 disable-model-invocation: true
 ---
 
@@ -38,6 +38,7 @@ For large scans (51+ source files): Hunters are partitioned by file scope to sta
 /bug-hunter --staged                    # Scan staged files (pre-commit check)
 /bug-hunter --fix src/                   # Find bugs AND auto-fix them
 /bug-hunter --fix -b feature-xyz        # Find + fix on branch diff
+/bug-hunter --fix --approve src/        # Find + fix, but ask before each fix
 /bug-hunter --loop src/                  # Ralph-loop mode: audit until 100% coverage
 /bug-hunter --loop --fix src/            # Loop mode: find + fix until clean
 ```
@@ -51,6 +52,8 @@ The raw arguments are: $ARGUMENTS
 0. If arguments contain `--loop`: strip it from the arguments and set `LOOP_MODE=true`. The remaining arguments are parsed normally below.
 
 0b. If arguments contain `--fix`: strip it from the arguments and set `FIX_MODE=true`. The remaining arguments are parsed normally below.
+
+0c. If arguments contain `--approve`: strip it from the arguments and set `APPROVE_MODE=true`. When this flag is set, Fixer agents run in `mode: "default"` (user reviews and approves each edit). When not set, `APPROVE_MODE=false` and Fixers run autonomously.
 
 1. If arguments contain `--staged`: this is **staged file mode**.
    - Run `git diff --cached --name-only` using the Bash tool to get the list of staged files.

@@ -73,7 +73,8 @@ Launch Fixer agents **in parallel** with `isolation: "worktree"`. Each Fixer rec
 - The note: "Fix bugs in severity order (Critical first). Your bugs are grouped by directory. All bugs in the same file are yours — handle ordering yourself."
 
 Permission mode for Fixers:
-- Always use `mode: "auto"` — autonomous execution, no user prompts. Bug Hunter runs fully autonomously from scan to fix.
+- If `APPROVE_MODE=true`: use `mode: "default"` — user reviews and approves each edit before it's applied. Report: "Running in approval mode — you'll be prompted before each fix."
+- If `APPROVE_MODE=false` (default): use `mode: "auto"` — autonomous execution, no user prompts. Bug Hunter runs fully autonomously from scan to fix.
 
 Wait for ALL Fixers to complete.
 
