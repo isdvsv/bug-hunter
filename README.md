@@ -171,9 +171,16 @@ Five real bugs beat twenty false positives. Quality over quantity.
 
 ---
 
-## Fix Pipeline Safety
+## Fix Pipeline
 
-When using `--fix`, Bug Hunter takes extensive precautions:
+By default, the fix pipeline is **fully autonomous** — no human intervention needed. Bugs are found, fixed, tested, and verified end-to-end. Use `--approve` to opt into manual approval mode.
+
+| Mode | Behavior |
+|------|----------|
+| `--fix` (default) | Fully autonomous — finds bugs, creates branch, applies fixes, runs tests, auto-reverts failures |
+| `--fix --approve` | Pauses before each fix for manual approval |
+
+### Safety
 
 1. **Git safety** — stashes uncommitted changes, creates a dedicated fix branch
 2. **Test baseline** — captures pre-fix test results for accurate diffing
@@ -181,6 +188,7 @@ When using `--fix`, Bug Hunter takes extensive precautions:
 4. **Auto-revert** — if a fix causes new test failures, it's automatically reverted via `git revert`
 5. **Post-fix re-scan** — a lightweight Hunter scans only changed lines to catch fixer-introduced bugs
 6. **Individual revertability** — any fix can be surgically reverted without affecting others
+7. **Test hooks** — auto-detects test runner, typecheck, and build commands from your project config
 
 ---
 
