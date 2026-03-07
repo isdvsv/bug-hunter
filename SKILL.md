@@ -1,6 +1,6 @@
 ---
 name: bug-hunter
-description: "Run adversarial bug hunting on your codebase with optional auto-fix. Uses parallel agent teams (Recon, Hunters, Skeptics, Referee) to find and verify real bugs, then optionally fixes them with parallel Fixer agents and test verification. Invoke with /bug-hunter, /bug-hunter --fix, /bug-hunter [path], /bug-hunter -b <branch>, or /bug-hunter --staged."
+description: "Adversarial bug hunting with parallel agent teams (Recon, Hunters, Skeptics, Referee) that find, verify, and optionally auto-fix real bugs. Use this skill whenever the user wants to find bugs, hunt for vulnerabilities, do a security audit, review code for issues, check for race conditions, find logic errors, scan for injection vulnerabilities, audit error handling, look for resource leaks, do a pre-commit safety check, review a branch for bugs, find regressions, or wants any kind of automated code review or bug sweep — even if they just say 'check my code', 'is this safe', 'review this for bugs', 'find what's broken', 'security scan', or 'audit this codebase'. Supports full project scans, directory/file targets, branch diffs, staged file checks, auto-fix with test verification, and loop mode for thorough coverage."
 argument-hint: "[path | -b <branch> [--base <base-branch>] | --staged | --fix | --loop | --approve]"
 disable-model-invocation: true
 ---
@@ -8,6 +8,15 @@ disable-model-invocation: true
 # Bug Hunt - Adversarial Bug Finding
 
 Run a parallel adversarial bug hunt on your codebase. Agents run in isolated teams for speed and fidelity.
+
+## Table of Contents
+- [Usage](#usage)
+- [Target](#target)
+- [Context Budget](#context-budget)
+- [Execution Steps](#execution-steps)
+- [Step 7: Present the Final Report](#step-7-present-the-final-report)
+- [Self-Test Mode](#self-test-mode)
+- [Error handling](#error-handling)
 
 **Phase 1 — Find & Verify:**
 ```
@@ -152,25 +161,25 @@ Report to the user:
 - Number of source files to scan (after filtering)
 - Number of files filtered out
 
-### Step 2: Read the prompt files and mode file
+### Step 2: Read prompt files on demand (context efficiency)
 
-**MANDATORY**: You MUST read these files using the Read tool before proceeding. Do NOT skip this step or attempt to act from memory. Use the absolute SKILL_DIR path resolved in Step 0.
-- `SKILL_DIR/prompts/recon.md` (skip for single-file mode)
-- `SKILL_DIR/prompts/hunter.md`
-- `SKILL_DIR/prompts/skeptic.md`
-- `SKILL_DIR/prompts/referee.md`
-- `SKILL_DIR/prompts/doc-lookup.md` (reference — included inline in hunter/skeptic/fixer prompts)
+**MANDATORY**: You MUST read prompt files using the Read tool before passing them to subagents. Do NOT skip this or act from memory. Use the absolute SKILL_DIR path resolved in Step 0.
 
-If FIX_MODE=true, also read:
-- `SKILL_DIR/prompts/fixer.md`
+**Load only what you need for each phase — do NOT read all files upfront:**
 
-Then read the mode-specific execution file (determined in Step 3):
-- `SKILL_DIR/modes/<mode>.md`
+| Phase | Read These Files |
+|-------|-----------------|
+| Recon (Step 4) | `prompts/recon.md` (skip for single-file mode) |
+| Hunters (Step 5) | `prompts/hunter.md` + `prompts/doc-lookup.md` |
+| Skeptics (Step 6) | `prompts/skeptic.md` + `prompts/doc-lookup.md` |
+| Referee (Step 7) | `prompts/referee.md` |
+| Fixers (Phase 2) | `prompts/fixer.md` + `prompts/doc-lookup.md` (only if FIX_MODE=true) |
 
-If LOOP_MODE=true, also read:
-- `SKILL_DIR/modes/loop.md` (or `fix-loop.md` if FIX_MODE is also true)
+**Read the mode file first** (determines execution steps):
+- `SKILL_DIR/modes/<mode>.md` — based on file count from Step 3
+- If LOOP_MODE=true, also read `SKILL_DIR/modes/loop.md` (or `fix-loop.md` if FIX_MODE is also true)
 
-After reading, you do NOT need to keep the full prompt text in your working memory. Extract the key instructions, then pass the prompt content to subagents via their system prompts.
+After reading each prompt, extract the key instructions and pass the content to subagents via their system prompts. You do not need to keep the full text in working memory.
 
 **Context pruning for subagents:** When passing bug lists to Skeptics, Fixers, or the Referee, only include the bugs assigned to that agent — not the full merged list. For each bug, include: BUG-ID, severity, file, lines, claim, evidence, runtime trigger, cross-references. Omit: the Hunter's internal reasoning, scan coverage stats, and any "FILES SCANNED/SKIPPED" metadata. This keeps subagent prompts lean.
 

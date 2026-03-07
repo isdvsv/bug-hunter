@@ -1,0 +1,230 @@
+{
+  "skill_name": "bug-hunter",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/bug-hunter test-fixture/",
+      "expected_output": "Full pipeline execution on the included test fixture (Express app with 5 planted bugs). Should run Recon -> Hunter -> Skeptic -> Referee and produce a final report confirming at least 4 of 5 planted bugs with severity ratings, file paths, and suggested fixes. Then auto-fix confirmed bugs.",
+      "files": [
+        "test-fixture/server.js",
+        "test-fixture/auth.js",
+        "test-fixture/users.js",
+        "test-fixture/db.js"
+      ],
+      "assertions": [
+        {
+          "text": "Pipeline runs all phases: Recon, Hunter, Skeptic, Referee",
+          "type": "content_check"
+        },
+        {
+          "text": "At least 4 of 5 planted bugs are confirmed in the final report",
+          "type": "content_check"
+        },
+        {
+          "text": "Each confirmed bug includes file path, line numbers, severity, and suggested fix",
+          "type": "content_check"
+        },
+        {
+          "text": "False positives are challenged and filtered by the Skeptic/Referee pipeline",
+          "type": "content_check"
+        },
+        {
+          "text": "Final report includes scan metadata (mode, files scanned, coverage)",
+          "type": "content_check"
+        },
+        {
+          "text": "Auto-fix pipeline is triggered for confirmed bugs (Phase 2)",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "/bug-hunter src/api/auth.ts",
+      "expected_output": "Single-file mode scan of an auth file. Should skip Recon (not needed for single file), run one Hunter, one Skeptic, and one Referee. Output should focus on security and logic bugs in the auth file specifically.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Selects single-file mode (1 file detected)",
+          "type": "content_check"
+        },
+        {
+          "text": "Skips Recon agent (not needed for single-file mode)",
+          "type": "content_check"
+        },
+        {
+          "text": "Hunter scans the target file and reports findings with BUG-ID format",
+          "type": "content_check"
+        },
+        {
+          "text": "Skeptic challenges the findings with code-based counter-arguments",
+          "type": "content_check"
+        },
+        {
+          "text": "Referee produces a final verdict (REAL BUG or NOT A BUG) for each finding",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "/bug-hunter -b feature-auth --base develop",
+      "expected_output": "Branch diff mode. Should run git diff to find changed files between feature-auth and develop branches, filter out non-source files, then run the full pipeline on the changed source files.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Runs git diff --name-only to extract changed files between branches",
+          "type": "content_check"
+        },
+        {
+          "text": "Filters out non-source files (configs, docs, assets, lockfiles)",
+          "type": "content_check"
+        },
+        {
+          "text": "Reports the number of source files to scan after filtering",
+          "type": "content_check"
+        },
+        {
+          "text": "Selects appropriate mode based on file count (small, parallel, extended, etc.)",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "/bug-hunter --staged",
+      "expected_output": "Staged file mode for pre-commit checking. Should run git diff --cached --name-only to get staged files, filter non-source files, then scan the staged source files.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Runs git diff --cached --name-only to get staged files",
+          "type": "content_check"
+        },
+        {
+          "text": "Filters out non-source files from the staged list",
+          "type": "content_check"
+        },
+        {
+          "text": "Scans full file contents of staged files (not just diffs)",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "/bug-hunter --fix src/",
+      "expected_output": "Full pipeline with auto-fix. After Phase 1 (find & verify), should proceed to Phase 2: create a git branch, detect test infrastructure, capture test baseline, launch parallel Fixer agents, merge fixes with checkpoint commits, run post-fix tests, and auto-revert any fixes that cause regressions.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Creates a git safety branch (bug-hunter-fix-*) before applying fixes",
+          "type": "content_check"
+        },
+        {
+          "text": "Detects test command from package.json or project config",
+          "type": "content_check"
+        },
+        {
+          "text": "Captures test baseline before applying fixes",
+          "type": "content_check"
+        },
+        {
+          "text": "Fixer agents implement minimal, surgical code changes",
+          "type": "content_check"
+        },
+        {
+          "text": "Each fix is a separate checkpoint commit with descriptive message",
+          "type": "content_check"
+        },
+        {
+          "text": "Post-fix test run compares against baseline (new failures vs pre-existing)",
+          "type": "content_check"
+        },
+        {
+          "text": "Fixes that cause new test failures are auto-reverted",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "/bug-hunter --loop src/",
+      "expected_output": "Loop mode for thorough coverage. Should create ralph-loop state files, iterate the pipeline until all CRITICAL and HIGH files are scanned, track coverage in .claude/bug-hunter-coverage.md, and mark ALL_TASKS_COMPLETE when done.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Creates .claude/ralph-loop.local.md state file for loop mode",
+          "type": "content_check"
+        },
+        {
+          "text": "Creates or updates .claude/bug-hunter-coverage.md with machine-parseable format",
+          "type": "content_check"
+        },
+        {
+          "text": "Tracks file coverage status (DONE, PARTIAL, SKIPPED) per iteration",
+          "type": "content_check"
+        },
+        {
+          "text": "Subsequent iterations only scan uncovered files (no re-scanning DONE files)",
+          "type": "content_check"
+        },
+        {
+          "text": "Marks ALL_TASKS_COMPLETE when all CRITICAL and HIGH files show DONE",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Can you check my Express API for security vulnerabilities? The code is in src/",
+      "expected_output": "Should trigger the bug-hunter skill (even though the user didn't say /bug-hunter) and run a security-focused scan on the src/ directory. The dual-lens Hunter system should emphasize security findings.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Triggers bug-hunter skill from natural language (security audit request)",
+          "type": "content_check"
+        },
+        {
+          "text": "Runs Recon to map architecture and identify trust boundaries",
+          "type": "content_check"
+        },
+        {
+          "text": "Security Hunter focuses on injection, auth bypass, input validation, secrets exposure",
+          "type": "content_check"
+        },
+        {
+          "text": "Output includes severity ratings (Critical, Medium, Low) for each finding",
+          "type": "content_check"
+        },
+        {
+          "text": "Framework-specific protections are checked (Express middleware, helmet, etc.)",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "/bug-hunter --fix --approve src/auth/",
+      "expected_output": "Fix mode with approval. Should find bugs in auth directory, then fix them but prompt the user before each edit (approval mode). Fixer agents run in default mode rather than auto mode.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "APPROVE_MODE is set to true from --approve flag",
+          "type": "content_check"
+        },
+        {
+          "text": "Fixer agents run in mode: default (user reviews each edit)",
+          "type": "content_check"
+        },
+        {
+          "text": "Reports 'Running in approval mode' to the user",
+          "type": "content_check"
+        },
+        {
+          "text": "Fixes are still committed as individual checkpoint commits",
+          "type": "content_check"
+        }
+      ]
+    }
+  ]
+}
