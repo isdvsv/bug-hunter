@@ -12,7 +12,7 @@ Before touching any code:
 3. Create a fix branch: `git checkout -b bug-hunter-fix-$(date +%Y%m%d-%H%M%S)`
 4. Report: "Created branch `bug-hunter-fix-XXXX` from `[current-branch]`. User changes stashed."
 
-If not in a git repo: warn "Not a git repo — fixes will modify files in place with no rollback. Proceed?" and skip branching.
+If not in a git repo: warn "Not a git repo — fixes will modify files in place with no rollback." and skip branching. Continue anyway.
 
 **8b. Detect test infrastructure**
 
@@ -73,8 +73,7 @@ Launch Fixer agents **in parallel** with `isolation: "worktree"`. Each Fixer rec
 - The note: "Fix bugs in severity order (Critical first). Your bugs are grouped by directory. All bugs in the same file are yours — handle ordering yourself."
 
 Permission mode for Fixers:
-- If `LOOP_MODE=true`: use `mode: "auto"` — autonomous execution, no user prompts
-- If `LOOP_MODE=false`: use `mode: "default"` — user reviews each edit
+- Always use `mode: "auto"` — autonomous execution, no user prompts. Bug Hunter runs fully autonomously from scan to fix.
 
 Wait for ALL Fixers to complete.
 
