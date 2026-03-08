@@ -1,215 +1,166 @@
-# Phase 2: Fix Pipeline (`--fix`)
+# Phase 2: Fix Pipeline (default; also via `--fix`/`--autonomous`)
 
-This phase takes the Referee's confirmed bug report and implements fixes. It only runs when `FIX_MODE=true` and the Referee confirmed at least one real bug.
+This phase takes the Referee's confirmed bug report and implements fixes. It runs when `FIX_MODE=true` and the Referee confirmed at least one real bug.
+All Fixer launches in this file must use `AGENT_BACKEND` selected during SKILL preflight.
 
-### Step 8: Prepare for Fixing
+### Step 8: Prepare for fixing (single-writer model)
 
-**8a. Git safety checkpoint**
+**8a. Git safety + baseline refs**
 
-Before touching any code:
-1. Run `git status --porcelain` — check for uncommitted changes
-2. If dirty working tree: run `git stash push -m "bug-hunter-pre-fix-$(date +%s)"` to save user's work
-3. Create a fix branch: `git checkout -b bug-hunter-fix-$(date +%Y%m%d-%H%M%S)`
-4. Report: "Created branch `bug-hunter-fix-XXXX` from `[current-branch]`. User changes stashed."
-
-If not in a git repo: warn "Not a git repo — fixes will modify files in place with no rollback." and skip branching. Continue anyway.
-
-**8b. Detect test infrastructure**
-
-Use the Recon output (tech stack, framework) plus quick filesystem checks:
-
-```
-Detect test runner by checking (in order, stop at first match):
-1. package.json -> scripts.test / scripts.test:unit / scripts.test:integration
-2. Makefile / justfile -> test target
-3. pytest.ini / pyproject.toml [tool.pytest] -> pytest
-4. go.mod exists -> go test ./...
-5. Cargo.toml exists -> cargo test
-6. If none found -> set TEST_COMMAND=null (tests will be skipped)
-```
-
-Also detect:
-- Typecheck command: `tsc --noEmit`, `mypy`, `cargo check`, etc.
-- Build command: from package.json scripts, Makefile, etc.
-
-Store these as `TEST_COMMAND`, `TYPECHECK_COMMAND`, `BUILD_COMMAND`. Any that aren't found are set to null.
-
-**8c. Capture test baseline**
-
-If TEST_COMMAND is not null:
-1. Run `TEST_COMMAND` using the Bash tool (with a 5-minute timeout) BEFORE any fixes
-2. Capture: total tests, passed, failed, error messages
-3. Store as `BASELINE_TESTS_PASSED`, `BASELINE_TESTS_FAILED`, `BASELINE_FAILURES` (list of test names/descriptions)
-4. Report: "Test baseline: [N] passed, [M] failed (pre-existing)"
-
-If TEST_COMMAND is null or test run times out, set `BASELINE=null`. Post-fix test failures cannot be attributed.
-
-**8d. Cluster bugs for fixers**
-
-Group bugs for parallel execution using directory-based clustering:
-1. For each bug, extract the directory of its primary file
-2. Group by top-level (or second-level) directory
-3. **Same-file rule**: all bugs in the same file MUST go to the same fixer (this is the only reliable dependency we can detect pre-fix)
-4. Split into clusters by directory
-
-| Confirmed bugs | Strategy |
-|----------------|----------|
-| 1-3 | Single fixer (no parallelism overhead) |
-| 4-10 | 2 fixers by directory |
-| 11+ | 3 fixers by directory |
-
-Report: "Fix plan: [N] bugs in [G] directory clusters."
-
-### Step 9: Execute Fixes (isolated Fixer agents)
-
-**9a. Launch Fixer agents in worktrees**
-
-Each Fixer runs in its own git worktree to prevent edit races:
-
-Launch Fixer agents **in parallel** with `isolation: "worktree"`. Each Fixer receives:
-- The fixer prompt (from `prompts/fixer.md`)
-- Its assigned bug subset (with full Referee details: file, lines, severity, description, suggested fix)
-- The tech stack context from Recon
-- The note: "Fix bugs in severity order (Critical first). Your bugs are grouped by directory. All bugs in the same file are yours — handle ordering yourself."
-
-Permission mode for Fixers:
-- If `APPROVE_MODE=true`: use `mode: "default"` — user reviews and approves each edit before it's applied. Report: "Running in approval mode — you'll be prompted before each fix."
-- If `APPROVE_MODE=false` (default): use `mode: "auto"` — autonomous execution, no user prompts. Bug Hunter runs fully autonomously from scan to fix.
-
-Wait for ALL Fixers to complete.
-
-**9b. Merge worktree changes (with checkpoint commits)**
-
-After all Fixers complete:
-1. For each Fixer that made changes, its worktree has a branch with commits
-2. Cherry-pick or merge each Fixer's commits onto the fix branch, **one bug at a time as separate commits**
-   - Commit message format: `fix(bug-hunter): BUG-N — [one-line description]`
-   - This creates individual checkpoint commits that can be reverted independently
-3. If a merge conflict occurs (two Fixers touched related code): stop and report the conflict — do NOT auto-resolve. Mark the conflicting bugs as FIX_CONFLICT.
-
-If only ONE Fixer was used (1-3 bugs), the worktree merge is trivial — just fast-forward.
-
-Report to user:
-```
-Fix execution:
-- Bugs assigned: [N]
-- Bugs fixed: [N] (high confidence: [H], medium: [M], low: [L])
-- Bugs requiring larger refactor: [N] (minimal patches applied)
-- Files modified: [list]
-- Merge conflicts: [N] (manual resolution needed)
-```
-
-### Step 10: Verify Fixes
-
-**10a. Run test suite (with baseline diff)**
-
-If TEST_COMMAND is not null:
-1. Run `TEST_COMMAND` using the Bash tool (with a 5-minute timeout)
-2. Capture: total tests, passed, failed, error messages
-3. **Diff against baseline**:
-   - New failures = failures in post-fix run that are NOT in `BASELINE_FAILURES`
-   - Resolved failures = failures in baseline that PASS now (fixes may have resolved pre-existing bugs)
-   - Unchanged failures = failures in both baseline and post-fix (pre-existing, not our problem)
-4. Map new failures back to modified files -> trace to which BUG-ID fix likely caused them
-
-If TYPECHECK_COMMAND is not null:
-5. Run typecheck — capture any new type errors
-
-If BUILD_COMMAND is not null:
-6. Run build — capture any build failures
+Before touching code:
+1. Run `git rev-parse --is-inside-work-tree`:
+   - If not a git repo, warn and continue without rollback features.
+2. If in git:
+   - Capture `ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)`
+   - Capture `FIX_BASE_COMMIT=$(git rev-parse HEAD)` (used later for exact post-fix diff)
+   - Run `git status --porcelain`
+   - If dirty working tree, run `git stash push -m "bug-hunter-pre-fix-$(date +%s)"` and record `STASH_CREATED=true`
+   - Create fix branch: `git checkout -b bug-hunter-fix-$(date +%Y%m%d-%H%M%S)`
 
 Report:
+- Fix branch name
+- Base commit hash (`FIX_BASE_COMMIT`)
+- Whether stash was created
+
+Acquire single-writer lock before edits:
 ```
-Verification:
-- Tests: [PASS/FAIL] ([N] passed, [M] failed)
-  - New failures (caused by fixes): [X] — [list test names + likely BUG-ID]
-  - Pre-existing failures (unchanged): [Y]
-  - Resolved by fixes: [Z]
-- Typecheck: [PASS/FAIL] ([N] new errors)
-- Build: [PASS/FAIL]
+node "$SKILL_DIR/scripts/fix-lock.cjs" acquire ".claude/bug-hunter-fix.lock" 1800
 ```
+If lock cannot be acquired, stop Phase 2 to avoid concurrent mutation.
 
-**10b. Auto-revert failed fixes**
+**8b. Detect verification commands**
 
-For each bug whose fix caused NEW test failures or type errors:
-1. Identify the checkpoint commit for that BUG-ID (from Step 9b)
-2. Run `git revert --no-edit <commit-hash>` to cleanly undo that specific fix
-3. Re-run `TEST_COMMAND` to confirm the revert resolved the failure
-4. Mark the bug as FIX_REVERTED (not FIX_FAILED) — the codebase is clean again
-5. Report: "BUG-N fix caused [test name] to fail — auto-reverted commit [hash]."
+Detect and store:
+- `TEST_COMMAND`
+- `TYPECHECK_COMMAND`
+- `BUILD_COMMAND`
 
-If the revert itself causes a conflict (other fixes depend on it), skip the revert and mark as FIX_FAILED instead.
+Use the same detection order as before. Missing commands should be stored as `null`.
 
-**10c. Post-fix targeted re-scan (catch fixer-introduced bugs)**
+**8c. Capture pre-fix baseline**
 
-After all fixes are applied and verified, launch a single lightweight Hunter agent to scan ONLY the lines that were changed by fixers:
+If `TEST_COMMAND` is not null:
+1. Run it once (timeout 5 minutes).
+2. Store pass/fail counts and failure identifiers as `BASELINE_FAILURES`.
 
-1. Run `git diff --unified=0 <base-branch>..HEAD` to get the exact changed line ranges
-2. Build a list of `file:line_start-line_end` for every changed hunk
-3. Launch one Hunter agent with this prompt:
-   - "You are a post-fix verification scanner. You are given a list of code changes made by automated fixers. Your ONLY job is to check whether the fix itself introduced a new bug — wrong logic in the fix, missing edge case in new validation, broken callers from signature changes. Scan ONLY the changed lines and their immediate context (10 lines above and below). Do NOT re-report the original bugs that were being fixed. Report only NEW issues introduced by the fixes."
-   - Pass the changed hunks list and the original bug descriptions (so it knows what was being fixed)
-4. If the re-scan finds issues, append them to the fix report as "FIXER-INTRODUCED" findings
+If baseline cannot run, set `BASELINE=null` and continue with manual-verification warning.
 
-This is cheap (only reads changed lines) and catches the class of bugs where the cure is worse than the disease.
+**8d. Build sequential fix plan**
 
-**10d. Determine fix status**
+Prepare bug queue:
+1. Apply confidence gate:
+   - `ELIGIBLE` for auto-fix when Referee confidence >= 75%.
+   - `MANUAL_REVIEW` when confidence < 75% or missing confidence.
+2. Run global consistency pass on merged findings:
+   - Detect reused BUG-ID collisions.
+   - Detect conflicting claims on the same file/line range.
+   - Resolve conflicts before edits.
+3. Auto-fix queue contains `ELIGIBLE` bugs only.
+4. Sort by severity: Critical -> Medium -> Low.
+5. Build canary subset from top critical/high-confidence eligible bugs (recommended 1-3 bugs).
+6. Keep same-file bugs adjacent.
+7. Group into small clusters (recommended max 3 bugs per cluster) for checkpoints.
 
-Classify each bug's fix status:
+Report: `Fix plan: [N] eligible bugs, canary=[K], rollout=[R], manual-review=[M].`
+
+### Step 9: Execute fixes (sequential fixer)
+
+Single writer rule: run one Fixer at a time. No parallel worktrees by default.
+
+Execution order:
+1. Canary clusters first.
+2. Verify canary results.
+3. Continue rollout clusters only if canary verification passes.
+
+For each cluster in order:
+1. Launch one Fixer with:
+   - `prompts/fixer.md`
+   - Cluster bug subset
+   - Recon tech stack context
+2. Validate Fixer payload before launch:
+   ```
+   node "$SKILL_DIR/scripts/payload-guard.cjs" validate fixer ".claude/payloads/fixer-cluster-<id>.json"
+   ```
+3. Permission mode:
+   - `APPROVE_MODE=true` -> `mode: "default"`
+   - `APPROVE_MODE=false` -> `mode: "auto"`
+4. Apply returned changes.
+5. Commit checkpoint immediately:
+   - `fix(bug-hunter): BUG-N — [short description]`
+   - If cluster contains multiple bugs, still keep one commit per bug when possible.
+6. Record commit hash per BUG-ID in a fix ledger.
+
+If a bug cannot be fixed, mark `SKIPPED` and continue.
+
+### Step 10: Verify and auto-revert
+
+**10a. Fast checks after each checkpoint**
+
+After each bug commit:
+- Run nearest/impacted checks first (targeted tests or module typecheck).
+- If targeted checks fail with new failures, revert that bug commit immediately.
+
+**10b. End-of-run full verification**
+
+After all clusters:
+1. Run full `TEST_COMMAND` (if available).
+2. Compare with baseline:
+   - New failures
+   - Unchanged pre-existing failures
+   - Resolved failures
+3. Run `TYPECHECK_COMMAND` and `BUILD_COMMAND` when available.
+
+**10c. Auto-revert failing bug commits**
+
+For each BUG-ID linked to new failures:
+1. Revert its checkpoint commit (`git revert --no-edit <hash>`).
+2. Re-run the smallest relevant check.
+3. Mark status:
+   - `FIX_REVERTED` when revert succeeds and failures clear.
+   - `FIX_FAILED` when revert conflicts or failures persist.
+
+**10d. Post-fix targeted re-scan**
+
+Use exact fixed scope from the real base commit:
+1. Run `git diff --unified=0 "$FIX_BASE_COMMIT"..HEAD`.
+2. Build changed hunks list.
+3. Run one lightweight Hunter on changed hunks only to detect fixer-introduced bugs.
+
+This removes ambiguity from `<base-branch>` and works for path scans, staged scans, and branch scans.
+
+### Step 11: Determine final bug status
 
 | Status | Criteria |
 |--------|----------|
-| FIXED | Fix applied, no new test failures traced to it, no fixer-introduced issues |
-| FIX_REVERTED | Fix caused test failures, auto-reverted to clean state |
-| FIX_FAILED | Fix caused test failures, revert not possible (other fixes depend on it) |
-| PARTIAL | Minimal patch applied, Fixer noted "larger refactor needed" |
-| FIX_CONFLICT | Merge conflict with another Fixer's changes |
-| SKIPPED | Fixer couldn't implement (too complex, reported as skipped) |
-| FIXER_BUG | Fix applied but re-scan found a new issue in the fix itself |
+| FIXED | Fix landed, checks pass, no fixer-introduced issue |
+| FIX_REVERTED | Fix introduced regression and was cleanly reverted |
+| FIX_FAILED | Regression introduced and could not be cleanly reverted |
+| PARTIAL | Minimal patch landed, larger refactor still required |
+| SKIPPED | Fix not implemented |
+| FIXER_BUG | Post-fix re-scan found a new bug introduced by the fix |
 
-### Step 11: Present Fix Report
+### Step 12: Restore user state and report
 
-Display the fix results to the user:
+If stash was created:
+1. Attempt automatic restore (`git stash pop`).
+2. If restore succeeds, report `stash_restored=true`.
+3. If restore conflicts, stop and report clear conflict instructions; do not discard stash.
 
+Always release single-writer lock at the end (success or failure path):
 ```
-## Fix Report
-
-### Fix Summary
-- Bugs targeted: [N]
-- Fixed successfully: [N] (Critical: [C], Medium: [M], Low: [L])
-- Fix reverted (caused test failures, cleanly undone): [N]
-- Fix failed (caused test failures, could not revert): [N]
-- Partial fixes (needs refactor): [N]
-- Merge conflicts: [N]
-- Skipped: [N]
-
-### Test Results
-- Test baseline (before fixes): [N] passed, [M] failed
-- Test post-fix: [N] passed, [M] failed
-- New failures: [X] | Resolved: [Z] | Unchanged: [Y]
-- Typecheck: [PASS/FAIL]
-- Build: [PASS/FAIL]
-
-### Files Modified
-[list of all files changed, with line counts]
-
-### Fixer-Introduced Issues
-[Any issues found by the post-fix re-scan — these are NEW bugs in the fix code itself, not the original bugs]
-
-### Fix Details
-[For each bug: BUG-ID, status, what was changed, confidence, notes]
-
-### Git Info
-- Fix branch: [branch name]
-- Stashed user changes: [yes/no — stash ref if yes]
-- Review: `git diff [base-branch]...[fix-branch]`
+node "$SKILL_DIR/scripts/fix-lock.cjs" release ".claude/bug-hunter-fix.lock"
 ```
+If an earlier step aborts Phase 2, run the same release command in best-effort cleanup before returning.
 
-**If LOOP_MODE=true and any bugs have status FIX_FAILED or FIX_CONFLICT:**
-Continue to the fix-loop iteration (see loop modes).
+Present:
+- Fix summary by status
+- Verification summary (baseline vs final)
+- Files modified
+- Fix details per BUG-ID
+- Git info:
+  - Fix branch
+  - Base commit (`FIX_BASE_COMMIT`)
+  - Review command: `git diff "$FIX_BASE_COMMIT"..HEAD`
+  - Stash restore outcome
 
-**If LOOP_MODE=false:**
-Present the report and stop. Tell the user:
-- If all fixes passed: "All [N] bugs fixed and verified on branch `[name]`. Review with `git diff`, merge when ready."
-- If some failed: "Fixed [N]/[M] bugs on branch `[name]`. [K] caused test failures — review needed."
-- If stash was created: "Your original changes are in `git stash list` — apply with `git stash pop` when done."
+If `LOOP_MODE=true`, continue to fix-loop rules for unresolved bugs.

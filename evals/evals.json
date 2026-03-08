@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "/bug-hunter test-fixture/",
-      "expected_output": "Full pipeline execution on the included test fixture (Express app with 5 planted bugs). Should run Recon -> Hunter -> Skeptic -> Referee and produce a final report confirming at least 4 of 5 planted bugs with severity ratings, file paths, and suggested fixes. Then auto-fix confirmed bugs.",
+      "expected_output": "Full pipeline execution on the included test fixture (Express app with 6 planted bugs). Should run Recon -> Hunter -> Skeptic -> Referee and produce a final report confirming at least 5 of 6 planted bugs with severity ratings, file paths, and suggested fixes.",
       "files": [
         "test-fixture/server.js",
         "test-fixture/auth.js",
@@ -17,7 +17,7 @@
           "type": "content_check"
         },
         {
-          "text": "At least 4 of 5 planted bugs are confirmed in the final report",
+          "text": "At least 5 of 6 planted bugs are confirmed in the final report",
           "type": "content_check"
         },
         {
@@ -33,7 +33,7 @@
           "type": "content_check"
         },
         {
-          "text": "Auto-fix pipeline is triggered for confirmed bugs (Phase 2)",
+          "text": "Fix pipeline is triggered by default when confirmed bugs exist; only --scan-only disables fixes",
           "type": "content_check"
         }
       ]
@@ -113,7 +113,7 @@
     {
       "id": 5,
       "prompt": "/bug-hunter --fix src/",
-      "expected_output": "Full pipeline with auto-fix. After Phase 1 (find & verify), should proceed to Phase 2: create a git branch, detect test infrastructure, capture test baseline, launch parallel Fixer agents, merge fixes with checkpoint commits, run post-fix tests, and auto-revert any fixes that cause regressions.",
+      "expected_output": "Full pipeline with auto-fix. After Phase 1 (find & verify), should proceed to Phase 2: create a git branch, acquire single-writer lock, detect test infrastructure, capture test baseline, run Fixer clusters sequentially with checkpoint commits, run post-fix tests, auto-revert regressions, and release lock.",
       "files": [],
       "assertions": [
         {
@@ -142,6 +142,14 @@
         },
         {
           "text": "Fixes that cause new test failures are auto-reverted",
+          "type": "content_check"
+        },
+        {
+          "text": "Acquires and releases .claude/bug-hunter-fix.lock around fix phase",
+          "type": "content_check"
+        },
+        {
+          "text": "Auto-fixes only bugs that pass confidence eligibility threshold",
           "type": "content_check"
         }
       ]
@@ -177,7 +185,7 @@
     {
       "id": 7,
       "prompt": "Can you check my Express API for security vulnerabilities? The code is in src/",
-      "expected_output": "Should trigger the bug-hunter skill (even though the user didn't say /bug-hunter) and run a security-focused scan on the src/ directory. The dual-lens Hunter system should emphasize security findings.",
+      "expected_output": "Should trigger the bug-hunter skill (even though the user didn't say /bug-hunter) and run a security-focused scan on the src/ directory. The deep Hunter should prioritize security findings, with optional triage hints when enabled.",
       "files": [],
       "assertions": [
         {
@@ -189,7 +197,7 @@
           "type": "content_check"
         },
         {
-          "text": "Security Hunter focuses on injection, auth bypass, input validation, secrets exposure",
+          "text": "Deep Hunter focuses on injection, auth bypass, input validation, and secrets exposure in security audit requests",
           "type": "content_check"
         },
         {
@@ -222,6 +230,130 @@
         },
         {
           "text": "Fixes are still committed as individual checkpoint commits",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "/bug-hunter huge-repo/",
+      "expected_output": "Large-repo run should initialize .claude/bug-hunter-state.json, split files into sequential chunks, and resume from state if interrupted.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Initializes bug-hunter-state.json with chunk metadata",
+          "type": "content_check"
+        },
+        {
+          "text": "Processes chunks sequentially and marks each chunk state",
+          "type": "content_check"
+        },
+        {
+          "text": "Can resume from existing state file without rescanning completed chunks",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "/bug-hunter src/ (second run with unchanged files)",
+      "expected_output": "Hash cache should skip unchanged files and focus scan effort on changed files only.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Runs hash-filter against bug-hunter-state.json before deep scan",
+          "type": "content_check"
+        },
+        {
+          "text": "Reports skipped unchanged files from cache",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "/bug-hunter src/ with malformed subagent payload",
+      "expected_output": "Pipeline should fail fast before spawning subagents when payload validation fails.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Validates payload via payload-guard.cjs before each subagent launch",
+          "type": "content_check"
+        },
+        {
+          "text": "Does not launch subagent when payload validation fails",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "/bug-hunter --fix src/ while another fix run is active",
+      "expected_output": "Fix phase should stop when single-writer lock cannot be acquired.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Attempts to acquire .claude/bug-hunter-fix.lock before any edits",
+          "type": "content_check"
+        },
+        {
+          "text": "Stops Phase 2 with clear lock-held message when lock is already held",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "/bug-hunter --fix src/ with mixed-confidence bugs",
+      "expected_output": "Auto-fix should run only on high-confidence bugs and leave low-confidence bugs as manual review.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Applies confidence threshold gating (>=75%) for auto-fix eligibility",
+          "type": "content_check"
+        },
+        {
+          "text": "Reports low-confidence bugs as manual-review and does not auto-edit them",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "/bug-hunter src/ on a CLI without spawn_agent",
+      "expected_output": "Pipeline should auto-select the available orchestration backend and continue. If remote orchestration is unavailable, it should fall back to local sequential execution.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Selects AGENT_BACKEND in preflight based on available runtime tools",
+          "type": "content_check"
+        },
+        {
+          "text": "Falls back to next backend when launch fails",
+          "type": "content_check"
+        },
+        {
+          "text": "Completes run with local-sequential fallback when no delegation backend is available",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "/bug-hunter huge-repo/ with flaky chunk worker",
+      "expected_output": "Orchestrator should enforce per-chunk timeout, retry failed chunk once with backoff, and persist attempt details in run journal.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Uses run-bug-hunter.cjs for autonomous chunk orchestration",
+          "type": "content_check"
+        },
+        {
+          "text": "Retries timed out/failed chunk according to max-retries and backoff policy",
+          "type": "content_check"
+        },
+        {
+          "text": "Writes attempt events to .claude/bug-hunter-run.log",
           "type": "content_check"
         }
       ]

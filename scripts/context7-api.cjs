@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 const API_BASE = 'https://context7.com/api/v2';
+const REQUEST_TIMEOUT_MS = 15000;
 
 // Load API key from environment variable or .env file
 function loadApiKey() {
@@ -38,14 +39,18 @@ function makeRequest(path, params = {}) {
     const queryString = new URLSearchParams(params).toString();
     const url = `${API_BASE}${path}?${queryString}`;
 
+    const headers = {
+      'User-Agent': 'Context7-Skill/1.0'
+    };
+    if (API_KEY) {
+      headers['Authorization'] = `Bearer ${API_KEY}`;
+    }
+
     const options = {
-      headers: {
-        'Authorization': API_KEY ? `Bearer ${API_KEY}` : '',
-        'User-Agent': 'Context7-Skill/1.0'
-      }
+      headers
     };
 
-    https.get(url, options, (res) => {
+    const req = https.get(url, options, (res) => {
       let data = '';
 
       res.on('data', (chunk) => {
@@ -63,7 +68,13 @@ function makeRequest(path, params = {}) {
           reject(new Error(`API Error ${res.statusCode}: ${data}`));
         }
       });
-    }).on('error', reject);
+    });
+
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      req.destroy(new Error(`Request timeout after ${REQUEST_TIMEOUT_MS}ms`));
+    });
+
+    req.on('error', reject);
   });
 }
 

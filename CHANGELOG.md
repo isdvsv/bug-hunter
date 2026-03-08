@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-03-08
+
+### Changed
+- **Sequential-first orchestration**: Parallel mode now uses one authoritative deep Hunter with optional read-only triage; Extended/Scaled modes now run chunked sequential scans with resume state.
+- **Fix behavior control**: Phase 2 now runs by default after confirmed findings, with `--scan-only` as explicit report-only opt-out.
+- **Fix pipeline safety**: Single-writer sequential fixer flow, checkpoint commits per bug, targeted verify before full verify, explicit `FIX_BASE_COMMIT` for post-fix diff.
+- **Preflight reliability**: Dynamic `SKILL_DIR` resolution and non-blocking Context7 availability checks (missing API key no longer blocks runs).
+- **Portability**: Prompt doc-lookup commands now use `"$SKILL_DIR/scripts/context7-api.cjs"` instead of hardcoded home paths.
+- **Fixture consistency**: Self-test expectations aligned to 6 planted bugs across SKILL docs and evals.
+- **Stash handling clarity**: Docs and pipeline now describe automatic stash restore attempt with conflict reporting.
+- **Context7 helper robustness**: Added request timeout handling in `scripts/context7-api.cjs`.
+- **Operational scripts**: Added `scripts/bug-hunter-state.cjs`, `scripts/payload-guard.cjs`, and `scripts/fix-lock.cjs` for state/cache management, spawn payload validation, and single-writer locking.
+- **Cross-CLI orchestration**: Added `AGENT_BACKEND` selection/fallback model (`spawn_agent -> subagent -> team -> local-sequential`) so runs adapt to different coding CLI capabilities.
+- **Executable orchestrator**: Added `scripts/run-bug-hunter.cjs` to run chunk workflows with backend selection, per-phase timeout/retry/backoff, and append-only run journal (`.claude/bug-hunter-run.log`).
+- **Confidence gating**: Auto-fix now explicitly targets only high-confidence bugs and leaves lower-confidence findings for manual review.
+- **Failure-path coverage**: Expanded eval scenarios for resume flows, hash cache skips, lock contention, payload guard failures, and confidence-gated fixes.
+- **Script reliability tests**: Added `scripts/tests/*` to validate `bug-hunter-state`, `payload-guard`, `fix-lock`, and `run-bug-hunter` behavior.
+- **Persistent index upgrade**: `scripts/code-index.cjs` now captures symbols, relative-import dependency graph, lightweight call graph, trust-boundary tags, and bug-scoped query commands.
+- **Delta-first scope**: Added `scripts/delta-mode.cjs` for changed-files + dependency-hop selection with critical overlay expansion candidates.
+- **Runner wiring**: `scripts/run-bug-hunter.cjs` now supports `--use-index`, `--delta-mode`, low-confidence expansion, chunk fact-card capture, global consistency reporting, and canary-first fix-plan generation.
+- **State schema v2**: `scripts/bug-hunter-state.cjs` now tracks confidence, low-confidence metrics, chunk fact cards, consistency payload, fix plan, and supports file-appending for expansion passes.
+- **Hybrid pipeline tests**: Added coverage for code indexing, delta selection/expansion, delta-runner expansion flow, fact-card persistence, consistency output, and canary subset planning.
+- **Autonomous trigger clarity**: Added `--autonomous` path in docs (forces fix mode with canary-first flow) to avoid "report-only then ask" behavior in unattended runs.
+- **False-positive control**: Added mandatory verification re-audit gate in skill flow so contradicted/non-reproducible findings are rejected before final confirmed counts.
+- **Default fix behavior**: Switched to fix-by-default workflow; `--scan-only` now explicitly disables Phase 2 and keeps report-only mode.
+- **README refresh**: Rewrote README in a consistent pattern aligned to default-fix flow, hybrid index+delta pipeline, re-audit gate, and canary-first remediation.
+
 ## 2026-03-07
 
 ### Added

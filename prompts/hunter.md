@@ -125,8 +125,10 @@ Before writing your final report, verify your coverage:
 
 Before reporting a finding that depends on how a library/framework behaves (e.g., "this ORM doesn't parameterize", "this template engine doesn't auto-escape"), verify your claim against actual documentation if you're not certain. False positives cost -3 points each.
 
-**Search:** `node ~/.claude/skills/bug-hunter/scripts/context7-api.cjs search "<library>" "<question>"`
-**Fetch docs:** `node ~/.claude/skills/bug-hunter/scripts/context7-api.cjs context "<library-id>" "<specific question>"`
+`SKILL_DIR` is injected by the orchestrator.
+
+**Search:** `node "$SKILL_DIR/scripts/context7-api.cjs" search "<library>" "<question>"`
+**Fetch docs:** `node "$SKILL_DIR/scripts/context7-api.cjs" context "<library-id>" "<specific question>"`
 
 Use sparingly — only when a finding hinges on library behavior you aren't sure about. If the API fails, note "could not verify from docs" in the evidence field.
 

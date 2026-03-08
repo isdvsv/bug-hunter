@@ -1,60 +1,87 @@
-# Extended Mode (FILE_BUDGET+1 to FILE_BUDGET*2 files) — partitioned parallel
+# Extended Mode (FILE_BUDGET+1 to FILE_BUDGET*2 files) — chunked sequential
 
-This mode adds file partitioning to keep each Hunter within context budget.
+This mode is built for medium-large codebases where one deep scan would overflow context.
+All launches in this file must use `AGENT_BACKEND` selected during SKILL preflight.
 
 ### Step 4e: Run Recon
-Same as parallel mode. Capture the risk map. The Recon output should indicate "NEEDS PARTITIONING" in its Context Budget field.
+Same as parallel mode. Capture risk map + service boundaries.
 
-### Step 5e: Partition files
+### Step 5e: Build chunk plan
 
-Using the Recon risk map, create TWO file partitions:
-- **Partition 1**: ALL CRITICAL files + first half of HIGH files + first half of MEDIUM files
-- **Partition 2**: ALL CRITICAL files + second half of HIGH files + second half of MEDIUM files
+Create sequential chunks with these rules:
+- Target chunk size: 20-40 source files.
+- Preserve service boundaries when possible.
+- Order chunks by risk: CRITICAL-heavy first, then HIGH, then MEDIUM.
+- Keep test files context-only and include only when needed.
 
-CRITICAL files appear in BOTH partitions (they're highest value). HIGH/MEDIUM files are split evenly.
+Persist plan to `.claude/bug-hunter-state.json`:
+- `chunks[]` with `id`, `files`, `status` (`pending|in_progress|done`)
+- `findings[]` ledger
+- `last_updated`
 
-Test files (CONTEXT-ONLY) are included in both partitions.
+Initialize state file:
+```
+node "$SKILL_DIR/scripts/bug-hunter-state.cjs" init ".claude/bug-hunter-state.json" "extended" ".claude/source-files.json" 30
+```
 
-Report to user: "Extended mode: [N] files split into 2 partitions ([P1] and [P2] files each, [C] CRITICAL files shared)."
+### Step 5e-run: Process chunks one-by-one
 
-### Step 5e-hunters: Run 4 Hunter agents
+For each pending chunk:
+1. Get next chunk:
+   ```
+   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" next-chunk ".claude/bug-hunter-state.json"
+   ```
+2. Mark chunk `in_progress` in state:
+   ```
+   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" mark-chunk ".claude/bug-hunter-state.json" "<chunk-id>" in_progress
+   ```
+3. Run hash cache filter on chunk files. Scan only returned `scan` files.
+   ```
+   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" hash-filter ".claude/bug-hunter-state.json" ".claude/chunk-<id>-files.json"
+   ```
+4. Optionally run read-only dual-lens triage on that chunk.
+5. Validate deep Hunter payload and run one deep Hunter on the chunk (authoritative output):
+   ```
+   node "$SKILL_DIR/scripts/payload-guard.cjs" validate hunter ".claude/payloads/hunter-chunk-<id>.json"
+   ```
+6. Run chunk-local gap-fill for missed CRITICAL/HIGH files.
+7. Append findings to state ledger:
+   ```
+   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" record-findings ".claude/bug-hunter-state.json" ".claude/chunk-<id>-findings.json" "extended"
+   ```
+8. Update hash cache for scanned files:
+   ```
+   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" hash-update ".claude/bug-hunter-state.json" ".claude/chunk-<id>-scanned-files.json" scanned
+   ```
+9. Mark chunk `done`:
+   ```
+   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" mark-chunk ".claude/bug-hunter-state.json" "<chunk-id>" done
+   ```
 
-Launch FOUR Hunters **in parallel** (two pairs, each pair covers one partition):
+If interrupted, resume from state and continue with remaining chunks only.
 
-- **Hunter-A1 (Security, Partition 1)**: Security lens on Partition 1 files
-- **Hunter-B1 (Logic, Partition 1)**: Logic lens on Partition 1 files
-- **Hunter-A2 (Security, Partition 2)**: Security lens on Partition 2 files
-- **Hunter-B2 (Logic, Partition 2)**: Logic lens on Partition 2 files
+### Step 5e-merge: Merge findings across chunks
 
-Each Hunter receives the FULL risk map (for cross-reference context) but is instructed to only READ and REPORT on files in its assigned partition. If a cross-reference points to a file in the other partition, note it but don't trace it (the other partition's Hunters will cover it).
+After all chunks complete:
+- Merge and dedupe by file+line+claim overlap.
+- Renumber BUG-IDs sequentially.
+- Build file-to-bugs index for Skeptic clustering.
 
-Wait for ALL to complete.
+### Step 6e: Skeptic pass
 
-### Step 5e-verify: Gap-fill check
-Same as parallel mode's gap-fill but across all 4 Hunters.
+Run Skeptics sequentially by directory clusters:
+- One Skeptic for <= 8 bugs.
+- Two Skeptics in sequence for > 8 bugs.
+- Validate each Skeptic payload before launch:
+  ```
+  node "$SKILL_DIR/scripts/payload-guard.cjs" validate skeptic ".claude/payloads/skeptic-<id>.json"
+  ```
 
-### Step 5e-merge: Merge all Hunter findings
-Same logic as parallel mode's merge but across 4 Hunters. Deduplication is especially important here since CRITICAL files were scanned by all Hunters — expect duplicates on CRITICAL file bugs.
+### Step 7e: Referee
 
-### Step 5e-reconcile: Cross-partition reconciliation
-
-After merging, collect all UNTRACED CROSS-REFS from every Hunter. These are cross-references that pointed to files in a different partition and were noted but not traced.
-
-If any untraced cross-refs exist:
-1. Group them by target file
-2. For each target file, collect the bug(s) that reference it and the specific claim about what the cross-ref should reveal
-3. Launch a single **Reconciliation Agent** (general lens) with this prompt:
-   - "You are a cross-reference verification agent. For each bug below, a Hunter identified a cross-file dependency but could not trace it because the file was in another partition. Your job: read the target file, trace the specific claim, and report whether the cross-reference SUPPORTS the bug claim, REFUTES it, or is INCONCLUSIVE. Do NOT find new bugs — only verify the cross-references you are given."
-   - Pass the list of bugs + their untraced cross-refs + the merged findings for context
-4. The Reconciliation Agent outputs a verdict for each cross-ref: SUPPORTS / REFUTES / INCONCLUSIVE
-5. Update the merged bug list:
-   - If REFUTES: add a note to the bug "Cross-ref refuted by reconciliation agent" — this weakens the finding
-   - If SUPPORTS: add a note "Cross-ref verified by reconciliation agent" — this strengthens the finding
-   - If INCONCLUSIVE: no change
-
-If there are no untraced cross-refs, skip this step.
-
-Report: "Cross-partition reconciliation: [N] cross-refs verified ([S] supported, [R] refuted, [I] inconclusive)" or "No cross-partition references to reconcile."
-
-### Steps 6e and 7e
-Same as parallel mode's Skeptic directory-clustering and Referee — they work identically regardless of how many Hunters ran.
+Run one Referee on merged findings + Skeptic output.
+- Validate Referee payload before launch:
+  ```
+  node "$SKILL_DIR/scripts/payload-guard.cjs" validate referee ".claude/payloads/referee.json"
+  ```
+If Referee fails, fall back to Skeptic accepted list and mark partial verification.

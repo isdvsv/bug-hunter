@@ -48,8 +48,10 @@ Apply fixes using the Edit tool. Rules:
 
 When implementing a fix that depends on library-specific API (e.g., the correct way to parameterize a query in Prisma, the right middleware pattern in Express), verify the correct approach against actual docs rather than guessing:
 
-**Search:** `node ~/.claude/skills/bug-hunter/scripts/context7-api.cjs search "<library>" "<question>"`
-**Fetch docs:** `node ~/.claude/skills/bug-hunter/scripts/context7-api.cjs context "<library-id>" "<specific question>"`
+`SKILL_DIR` is injected by the orchestrator.
+
+**Search:** `node "$SKILL_DIR/scripts/context7-api.cjs" search "<library>" "<question>"`
+**Fetch docs:** `node "$SKILL_DIR/scripts/context7-api.cjs" context "<library-id>" "<specific question>"`
 
 Use only when you need the correct API pattern for a fix. One lookup per fix, max.
 

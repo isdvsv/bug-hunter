@@ -106,14 +106,16 @@ After all bugs, output:
 
 When your DISPROVE argument depends on a framework/library claim (e.g., "Express includes CSRF by default", "Prisma parameterizes queries"), verify it against real docs before committing to the disprove.
 
+`SKILL_DIR` is injected by the orchestrator.
+
 **Search for the library:**
 ```bash
-node ~/.claude/skills/bug-hunter/scripts/context7-api.cjs search "<library>" "<question>"
+node "$SKILL_DIR/scripts/context7-api.cjs" search "<library>" "<question>"
 ```
 
 **Fetch docs for a specific claim:**
 ```bash
-node ~/.claude/skills/bug-hunter/scripts/context7-api.cjs context "<library-id>" "<specific question>"
+node "$SKILL_DIR/scripts/context7-api.cjs" context "<library-id>" "<specific question>"
 ```
 
 Use sparingly — only when a DISPROVE hinges on a framework behavior claim you aren't 100% sure about. Cite what you find: "Per [library] docs: [relevant quote]".

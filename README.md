@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="assets/pipeline-diagram.png" alt="Bug Hunter — adversarial AI bug detection pipeline diagram showing Recon, Hunters, Skeptics, Referee, and Fixer agents" width="100%" />
+  <img src="assets/pipeline-diagram.png" alt="Bug Hunter pipeline" width="100%" />
 </p>
 
 <h1 align="center">/bug-hunter</h1>
 
 <p align="center">
-  <strong>Adversarial AI bug detection and auto-fix for coding agents</strong><br/>
-  Multi-agent pipeline that finds security vulnerabilities, logic errors, and runtime bugs — then fixes them autonomously on a safe branch.
+  <strong>Adversarial bug detection + autonomous fix for coding agents</strong><br/>
+  Sequential-first pipeline for real runtime bugs, with safe branch-based remediation.
 </p>
 
 <p align="center">
@@ -15,205 +15,214 @@
 
 ---
 
-## Why Bug Hunter?
+## Overview
 
-LLMs are sycophantic code reviewers. Ask one to find bugs and it over-reports. Ask it to verify those bugs and it agrees with itself. The result: noise, false positives, wasted time.
+Bug Hunter is built for issues linters miss: runtime logic flaws, race conditions, auth gaps, and cross-file contract mismatches.
 
-**Bug Hunter** solves this by pitting multiple AI agents against each other in isolated contexts. Each agent has competing incentives — adversarial tension that produces high-fidelity bug reports with minimal false positives.
+The system uses adversarial roles in isolated context:
 
-Unlike traditional static analysis tools, Bug Hunter understands runtime behavior, cross-file dependencies, and framework-specific patterns. It catches the bugs that linters miss.
+1. Recon maps architecture and trust boundaries.
+2. Hunter finds bugs.
+3. Skeptic tries to disprove findings.
+4. Referee decides final verdicts.
+5. Fix phase applies canary-first, confidence-gated fixes.
 
----
-
-## How Adversarial Bug Detection Works
-
-### Phase 1 — Find and Verify Bugs
-
-```
-                    +-- Hunter-A (Security lens) --+       +-- Skeptic-A (cluster 1) --+
-Recon (map) ------->|                              |-- merge ->|                          |-- merge --> Referee
-                    +-- Hunter-B (Logic lens)    --+       +-- Skeptic-B (cluster 2) --+
-```
-
-| Step | Agent | What it does | Scoring incentive |
-|------|-------|--------------|-------------------|
-| 1 | **Recon** | Maps codebase architecture, identifies trust boundaries, computes context budget | Accurate risk map = better Hunter coverage |
-| 2 | **Hunters** | Dual-lens scan (security + logic) with mandatory security checklist per file | +1/+5/+10 per real bug. -3 per false positive |
-| 3 | **Skeptics** | Adversarially challenge every finding, verify claims against real docs via Context7 | +points for disproving false positives. **-2x penalty** for wrongly dismissing real bugs |
-| 4 | **Referee** | Reads code independently, spot-checks evidence quotes, makes final verdicts | Symmetric +1/-1 scoring. Ground truth framing |
-
-Every agent runs in **completely isolated context** — they cannot see each other's reasoning, only structured findings. This prevents anchoring bias and forces independent verification.
-
-### Phase 2 — Auto-Fix and Verify
-
-```
-                  +-- Fixer-A (worktree 1) --+
-Git branch ------>|                          |-- merge --> Test diff --> Report
-                  +-- Fixer-B (worktree 2) --+
-```
-
-| Step | Agent | What it does |
-|------|-------|--------------|
-| 5 | **Fixers** | Apply minimal surgical fixes in isolated git worktrees, one checkpoint commit per bug |
-| 6 | **Verify** | Run test suite, diff against baseline, auto-revert any fix that introduces regressions |
-| 7 | **Re-scan** | Lightweight Hunter scans only changed lines to catch fixer-introduced bugs |
-
-Each fix is an individual commit that can be reverted independently. Failed fixes are auto-reverted — the codebase stays clean.
+A mandatory re-audit rejection pass drops contradicted or non-reproducible findings before final confirmed counts.
 
 ---
 
-## Supported Coding Agents and Editors
+## Default Behavior
 
-### Coding Agents (CLI)
+Bug Hunter now runs in **fix-by-default mode**.
 
-| Agent | Status |
-|-------|--------|
-| **Claude Code** | Full support |
-| **OpenAI Codex CLI** | Full support |
-| **GitHub Copilot CLI** | Full support |
-| **Kiro CLI** (AWS) | Full support |
-| **Pi Coding Agent** | Full support |
-| **Opencode** | Full support |
-| **Gemini CLI** | Full support |
-| **Amp** | Full support |
+- If confirmed eligible bugs exist, Phase 2 starts automatically.
+- If no confirmed bugs exist, run ends after report.
+- Use `--scan-only` for report-only mode with no edits.
 
-### Editors and IDEs
-
-| Editor | Status |
-|--------|--------|
-| **Cursor** | Full support |
-| **VS Code** / **Windsurf** | Full support |
-| **JetBrains** (IntelliJ, PyCharm, WebStorm) | Full support |
-| **Antigravity** (Google) | Full support |
-| **Neovim** / **Vim** | Full support via terminal |
-
-### Terminals
-
-Works in **any terminal** — iTerm2, Ghostty, Warp, Alacritty, Kitty, Hyper, Windows Terminal.
-
-> If your coding agent or editor supports skills, Bug Hunter works out of the box.
+All edits happen on `bug-hunter-fix-<timestamp>` with checkpoint commits and auto-revert on regression.
 
 ---
 
-## Installation
+## Commands
 
 ```bash
-git clone https://github.com/codexstar69/bug-hunter.git ~/.claude/skills/bug-hunter
+/bug-hunter                               # full scan + auto-fix (default)
+/bug-hunter src/                          # target directory
+/bug-hunter lib/auth.ts                   # target file
+/bug-hunter -b feature-xyz                # branch diff vs main
+/bug-hunter -b feature-xyz --base dev     # branch diff vs custom base
+/bug-hunter --staged                      # staged files scan
+/bug-hunter --scan-only src/              # report-only mode
+/bug-hunter --fix src/                    # explicit auto-fix (alias of default)
+/bug-hunter --autonomous src/             # explicit no-intervention auto-fix
+/bug-hunter --fix --approve src/          # ask before each fix
+/bug-hunter --loop src/                   # loop coverage mode
+/bug-hunter --loop --fix src/             # loop + fix mode
 ```
 
-Coding agents auto-discover skills in `~/.claude/skills/`.
+---
 
-### Set Up Context7 (Recommended)
+## Pipeline
 
-Bug Hunter verifies claims about library and framework behavior against real documentation using the [Context7](https://context7.com) API. This significantly reduces false positives from hallucinated framework assumptions.
+### Phase 1: Find + Verify
 
-1. Get a free API key from [context7.com](https://context7.com)
-2. Add to your shell profile (`.zshrc`, `.bashrc`, etc.):
+```
+Recon -> Deep Hunter -> Skeptic -> Referee -> Re-audit gate
+```
+
+### Phase 2: Fix + Verify
+
+```
+Fix branch -> canary subset -> targeted checks -> rollout -> full checks -> post-fix re-scan
+```
+
+Fixes are single-writer and sequential by default.
+
+---
+
+## Scaling Strategy
+
+Bug Hunter uses a hybrid **index + delta + chunk** model for large repositories.
+
+### Persistent index
+
+`code-index.cjs` builds `.claude/bug-hunter-index.json` with:
+
+- symbols
+- import dependencies
+- lightweight call graph
+- trust-boundary tags
+
+### Delta mode
+
+`delta-mode.cjs` starts from changed files and expands by dependency hops.
+
+- initial scope: changed files + 1/2-hop deps
+- expansion trigger: low-confidence findings
+- expansion inputs: low-confidence files + critical boundary overlays
+
+### Chunk state + facts
+
+`bug-hunter-state.cjs` stores:
+
+- chunk status and retries
+- hash cache (skip unchanged files)
+- bug ledger with confidence
+- chunk fact cards (contracts, auth assumptions, invariants)
+- consistency report + fix plan
+
+### Global consistency before fix
+
+`run-bug-hunter.cjs` performs a final consistency pass:
+
+- duplicate/reused bug-id detection
+- conflicting claims at same location
+- low-confidence summary
+
+Then it generates canary-first fix planning.
+
+---
+
+## Safety Model
+
+- Dedicated fix branch per run.
+- Single-writer lock via `.claude/bug-hunter-fix.lock`.
+- Checkpoint commit per bug/cluster.
+- Targeted verification before full-suite verification.
+- Automatic `git revert` for regression-causing fixes.
+- Post-fix delta re-scan for fixer-introduced bugs.
+- Dirty tree stash + restore attempt with conflict reporting.
+
+---
+
+## Backend Adaptation
+
+Bug Hunter picks one backend and falls back automatically:
+
+1. `spawn_agent` + `wait`
+2. native `subagent`
+3. team-agent tooling
+4. local sequential fallback
+
+---
+
+## Context7
+
+Context7 lookups are optional and non-blocking.
+
+- If available, Skeptic/Hunter use docs to validate framework claims.
+- Missing `CONTEXT7_API_KEY` does not block execution.
+
+Setup (optional):
 
 ```bash
-export CONTEXT7_API_KEY="your-api-key-here"
+export CONTEXT7_API_KEY="your-api-key"
 ```
-
-3. Restart your terminal
-
-On first run, Bug Hunter checks for the key and runs a smoke test. If missing, it prompts you to set it up.
 
 ---
 
-## Usage
+## Orchestrator
+
+For long or flaky runs use:
 
 ```bash
-/bug-hunter                              # Scan entire project
-/bug-hunter src/                         # Scan specific directory
-/bug-hunter lib/auth.ts                  # Scan specific file
-/bug-hunter -b feature-xyz              # Scan files changed in feature-xyz vs main
-/bug-hunter -b feature-xyz --base dev   # Scan files changed in feature-xyz vs dev
-/bug-hunter --staged                    # Scan staged files (pre-commit check)
-/bug-hunter --fix src/                   # Find bugs AND auto-fix them
-/bug-hunter --fix -b feature-xyz        # Find + fix on branch diff
-/bug-hunter --fix --approve src/        # Find + fix, but approve each fix manually
-/bug-hunter --loop src/                  # Loop mode: audit until 100% coverage
-/bug-hunter --loop --fix src/            # Loop mode: find + fix until clean
+node scripts/run-bug-hunter.cjs run \
+  --skill-dir /absolute/path/to/bug-hunter \
+  --files-json .claude/source-files.json \
+  --changed-files-json .claude/changed-files.json \
+  --mode extended \
+  --use-index true \
+  --delta-mode true \
+  --delta-hops 2 \
+  --expand-on-low-confidence true \
+  --canary-size 3 \
+  --timeout-ms 120000 \
+  --max-retries 1 \
+  --backoff-ms 1000
 ```
 
-### Auto-Scaling Modes
+Artifacts:
 
-The pipeline auto-selects the right mode based on codebase size. Recon dynamically computes the context budget per agent based on average file sizes.
-
-| Mode | Source files | Agents launched |
-|------|-------------|-----------------|
-| **Single-file** | 1 | 1 Hunter + 1 Skeptic + 1 Referee |
-| **Small** | 2-10 | 1 Hunter + 1 Skeptic + 1 Referee |
-| **Parallel** | 11-40 | Recon + 2 Hunters + 2 Skeptics + Referee |
-| **Extended** | 41-80 | Recon + 4 Hunters + 2 Skeptics + Referee |
-| **Scaled** | 81-120 | Recon + 6 Hunters + 3 Skeptics + Referee |
-| **Loop** | 120+ | Iterates in batches until full coverage achieved |
+- `.claude/bug-hunter-run.log`
+- `.claude/bug-hunter-state.json`
+- `.claude/bug-hunter-index.json`
+- `.claude/bug-hunter-facts.json`
+- `.claude/bug-hunter-consistency.json`
+- `.claude/bug-hunter-fix-plan.json`
 
 ---
 
-## What Bugs Does It Catch?
+## Modes
 
-Bug Hunter scans for **behavioral bugs** — issues that cause incorrect behavior at runtime:
-
-- **Security vulnerabilities** — SQL injection, authentication bypass, SSRF, path traversal, hardcoded secrets, JWT without expiry
-- **Logic errors** — off-by-one, wrong comparisons, inverted conditions, broken pagination
-- **Error handling gaps** — silent error swallowing, missing null checks, unhandled promise rejections
-- **Type safety issues** — type coercion traps across boundaries, non-string inputs to string-only APIs
-- **Race conditions** — async I/O interleaving, shared mutable state without coordination
-- **API contract violations** — wrong status codes, missing required fields, broken callers
-- **Data integrity bugs** — truncation, encoding issues, timezone bugs, integer overflow
-- **Cross-file bugs** — assumption mismatches across module boundaries, auth gaps in call chains
-
-### What It Skips (By Design)
-
-Style, formatting, naming conventions, unused imports, missing types, TODO comments, test coverage gaps, dependency versions. Those are linter and type-checker responsibilities.
+| Mode | File count | Execution |
+|------|------------|-----------|
+| Single-file | 1 | Hunter + Skeptic + Referee |
+| Small | 2-10 | Recon + Hunter + Skeptic + Referee |
+| Parallel (hybrid) | 11-FILE_BUDGET | Recon + deep Hunter (+ optional read-only triage) + Skeptic + Referee |
+| Extended | FILE_BUDGET+1 to FILE_BUDGET*2 | Sequential chunked runs |
+| Scaled | FILE_BUDGET*2+1 to FILE_BUDGET*3 | State-driven chunked runs |
+| Loop | > FILE_BUDGET*3 | Iterative coverage loop |
 
 ---
 
-## Scoring System
+## What It Catches
 
-The scoring incentives are **load-bearing** — they exploit each agent's desire to maximize its score:
+- security vulnerabilities
+- logic errors
+- runtime error-handling gaps
+- race conditions
+- API contract breaks
+- cross-file assumption mismatches
+- data integrity bugs
 
-| Agent | Scoring | Effect |
-|-------|---------|--------|
-| **Hunter** | +1/+5/+10 per real Low/Medium/Critical bug. -3 per false positive | Motivates thoroughness but penalizes sloppiness |
-| **Skeptic** | +points for valid disproves. **-2x points** for wrongly dismissing real bugs | Creates calibrated caution — only disproves when >67% confident |
-| **Referee** | Symmetric +1/-1 with ground truth framing | Precise rather than biased toward either side |
-
-Five real bugs beat twenty false positives. Quality over quantity.
-
----
-
-## Autonomous Fix Pipeline
-
-By default, the fix pipeline is **fully autonomous** — no human intervention needed. Bugs are found, fixed, tested, and verified end-to-end.
-
-**All fixes happen on a separate branch.** Your working branch is never touched. Review the diff, then merge when you're ready.
-
-| Mode | Behavior |
-|------|----------|
-| `--fix` (default) | Fully autonomous — creates branch, applies fixes, runs tests, auto-reverts failures |
-| `--fix --approve` | Pauses before each fix for manual approval |
-
-### Git Safety and Branch Protection
-
-1. **Dedicated fix branch** — creates `bug-hunter-fix-<timestamp>` from your current branch. Your code stays untouched until you merge.
-2. **Stashes uncommitted work** — any dirty working tree is stashed before fixes begin, restored after
-3. **Test baseline** — captures pre-fix test results for accurate regression diffing
-4. **Checkpoint commits** — each bug fix is a separate `fix(bug-hunter): BUG-N` commit
-5. **Auto-revert on regression** — if a fix causes new test failures, it is automatically reverted via `git revert`
-6. **Post-fix re-scan** — a lightweight Hunter scans only changed lines to catch fixer-introduced bugs
-7. **Individual revertability** — any single fix can be surgically reverted without affecting others
-8. **Test hook auto-detection** — auto-detects test runner, typecheck, and build commands from your project config
+Not a style/lint tool.
 
 ---
 
-## Supported Languages
+## Tested Languages
 
-Bug Hunter works with any language your coding agent can read. It has been tested extensively with:
-
-- TypeScript / JavaScript (Node.js, React, Next.js, Express)
-- Python (Django, Flask, FastAPI)
+- TypeScript / JavaScript
+- Python
 - Go
 - Rust
 - Java / Kotlin
@@ -222,94 +231,55 @@ Bug Hunter works with any language your coding agent can read. It has been teste
 
 ---
 
-## Project Structure
+## Repository Layout
 
-```
+```text
 bug-hunter/
-  SKILL.md              # Core dispatcher (argument parsing, mode routing, report)
-  prompts/              # Agent prompt files
-    recon.md            # Architecture mapper
-    hunter.md           # Bug finder (dual-lens: security + logic)
-    skeptic.md          # Adversarial challenger
-    referee.md          # Final arbiter
-    fixer.md            # Surgical code fixer
-    doc-lookup.md       # Context7 doc verification reference
-  modes/                # Execution mode files (loaded on demand)
-    single-file.md      # 1 file
-    small.md            # 2-10 files
-    parallel.md         # 11-40 files
-    extended.md         # 41-80 files
-    scaled.md           # 81-120 files
-    loop.md             # Coverage tracking across iterations
-    fix-pipeline.md     # Phase 2: fix + verify
-    fix-loop.md         # Combined find + fix loop
+  SKILL.md
+  prompts/
+  modes/
   scripts/
-    context7-api.cjs    # Context7 doc lookup CLI
-    init-test-fixture.sh # Initialize test fixture git repo
-  test-fixture/         # Self-test app with planted bugs
-  assets/               # Images and diagrams
+    run-bug-hunter.cjs
+    code-index.cjs
+    delta-mode.cjs
+    bug-hunter-state.cjs
+    payload-guard.cjs
+    fix-lock.cjs
+    context7-api.cjs
+    tests/
+  test-fixture/
+  assets/
 ```
 
 ---
 
 ## Self-Test
 
-Bug Hunter ships with a test fixture — a small Express app with 6 intentionally planted bugs (2 Critical, 2 Medium, 2 Low). Run it to validate the pipeline:
+The included fixture contains 6 planted bugs (2 Critical, 3 Medium, 1 Low).
 
 ```bash
 /bug-hunter test-fixture/
 ```
 
-Expected results:
-- Recon classifies 3 files as CRITICAL, 1 as HIGH
-- Hunters find all 6 bugs
-- Skeptic challenges at least 1 false positive
-- Referee confirms all planted bugs
+Expected outcome: all planted bugs should be confirmed with at least one Skeptic challenge recorded.
 
 ---
 
-## FAQ
-
-### How is this different from a linter or static analysis tool?
-
-Linters check syntax and style. Static analysis tools check type safety and simple patterns. Bug Hunter finds **runtime behavioral bugs** — logic errors, security vulnerabilities, race conditions, and cross-file assumption mismatches that no linter can detect. It understands what your code *does*, not just how it looks.
-
-### Does it modify my code directly?
-
-No. All fixes are applied on a **dedicated branch** (`bug-hunter-fix-<timestamp>`). Your working branch is never modified. You review the diff and merge when ready.
-
-### What if a fix breaks something?
-
-Each fix is a separate checkpoint commit. If a fix causes new test failures, it is **automatically reverted** — no manual cleanup needed. The codebase stays clean.
-
-### How do I review fixes before they're applied?
-
-Use `--approve` mode: `/bug-hunter --fix --approve src/`. The system pauses before each fix and waits for your approval.
-
-### What languages does it support?
-
-Any language your coding agent can read. Tested with TypeScript, JavaScript, Python, Go, Rust, Java, Kotlin, Ruby, and PHP.
-
-### How does it reduce false positives?
-
-Three mechanisms: (1) adversarial Skeptic agents that challenge every finding, (2) Context7 doc verification against real library documentation, and (3) an independent Referee that reads code from scratch before making final verdicts. Agents are scored with asymmetric penalties that make false positives expensive.
-
----
-
-## Update
+## Install / Update / Remove
 
 ```bash
-cd ~/.claude/skills/bug-hunter && git pull
-```
+# install
+git clone https://github.com/codexstar69/bug-hunter.git ~/.agents/skills/bug-hunter
 
-## Uninstall
+# update
+cd ~/.agents/skills/bug-hunter && git pull
 
-```bash
-rm -rf ~/.claude/skills/bug-hunter
+# remove
+rm -rf ~/.agents/skills/bug-hunter
 ```
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE)

@@ -6,6 +6,13 @@
 .env.local
 .idea/
 .vscode/
+.claude/bug-hunter-state.json
+.claude/bug-hunter-fix.lock
+.claude/bug-hunter-run.log
+.claude/bug-hunter-coverage.md
+.claude/bug-hunter-coverage.md.bak
+.claude/chunks/
 
 # Test fixture git repo (self-contained for testing)
 test-fixture/.git/
+tmp/

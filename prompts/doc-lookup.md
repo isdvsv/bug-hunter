@@ -12,19 +12,21 @@ When you need to verify a claim about how a library, framework, or API actually 
 
 ### How to use it
 
+`SKILL_DIR` is injected by the orchestrator. Use it for all helper script paths.
+
 **Step 1: Search for the library**
 ```bash
-node ~/.claude/skills/bug-hunter/scripts/context7-api.cjs search "<library>" "<what you need to know>"
+node "$SKILL_DIR/scripts/context7-api.cjs" search "<library>" "<what you need to know>"
 ```
-Example: `node ~/.claude/skills/bug-hunter/scripts/context7-api.cjs search "prisma" "SQL injection parameterized queries"`
+Example: `node "$SKILL_DIR/scripts/context7-api.cjs" search "prisma" "SQL injection parameterized queries"`
 
 This returns a list of matching libraries with IDs. Pick the best match (highest trust score, correct version).
 
 **Step 2: Fetch documentation**
 ```bash
-node ~/.claude/skills/bug-hunter/scripts/context7-api.cjs context "<library-id>" "<specific question>"
+node "$SKILL_DIR/scripts/context7-api.cjs" context "<library-id>" "<specific question>"
 ```
-Example: `node ~/.claude/skills/bug-hunter/scripts/context7-api.cjs context "/prisma/prisma" "are raw queries parameterized by default"`
+Example: `node "$SKILL_DIR/scripts/context7-api.cjs" context "/prisma/prisma" "are raw queries parameterized by default"`
 
 This returns relevant documentation snippets with code examples.
 
