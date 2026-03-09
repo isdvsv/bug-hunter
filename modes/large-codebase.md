@@ -11,9 +11,16 @@ This mode handles truly large codebases (monorepos, enterprise apps, 200+ source
 
 ## The Strategic Approach: Domain-First, Tiered Scanning
 
-### Tier 0: Rapid Recon (lightweight, always first)
+### Tier 0: Rapid Recon (already done by triage)
 
-Instead of classifying every file, do a **structural scan only**:
+**If triage was run (Step 0.4)**, Tier 0 is already complete. The triage JSON at `.claude/bug-hunter-triage.json` contains:
+- `domains`: all domains with tier classification, file counts, and risk breakdown
+- `domainFileLists`: per-domain file paths (for large-codebase strategy)
+- `fileBudget`, `scanOrder`, `tokenEstimate`
+
+Read the triage JSON and proceed directly to Tier 1. Do NOT re-scan the filesystem.
+
+**If triage was NOT run** (e.g., Recon was invoked directly), do a structural scan:
 
 1. **Discover the domain map** using directory structure:
    ```bash

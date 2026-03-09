@@ -203,7 +203,22 @@ List these separately in the output as **CONTEXT-ONLY** files. Hunters will read
 - Service: [name] | Path: [root dir] | Language: [lang] | Framework: [fw] | Files: [N]
 [If single service: "Single-service codebase — no partitioning by service needed."]
 
-## File Metrics
+## File Metrics & Context Budget
+
+**If a triage JSON was provided** (`.claude/bug-hunter-triage.json` exists), use its values directly:
+- FILE_BUDGET: use `triage.fileBudget`
+- File counts: use `triage.totalFiles`, `triage.scannableFiles`
+- Average lines: use `triage.avgLines`
+- Strategy: already decided by triage — do NOT recompute
+
+Just confirm the triage numbers and report them:
+```
+FILE_BUDGET: [triage.fileBudget] (from triage, [triage.sampledFiles] files sampled)
+Total source files: [triage.totalFiles]
+Scannable: [triage.scannableFiles]
+```
+
+**If NO triage JSON exists** (Recon was called directly without triage), compute FILE_BUDGET yourself:
 - CRITICAL: [N] files
 - HIGH: [N] files
 - MEDIUM: [N] files
@@ -211,20 +226,15 @@ List these separately in the output as **CONTEXT-ONLY** files. Hunters will read
 - Total source files (excluding tests): [N]
 - Total lines of code: [N]
 - Average lines per file: [N]
-
-## Context Budget
-Compute FILE_BUDGET dynamically based on file sizes:
-- Average tokens per file ≈ average_lines × 4 (rough estimate: 4 tokens per line)
-- Available context for file reading ≈ 150,000 tokens (after prompt overhead)
-- FILE_BUDGET = floor(150000 / (average_lines × 4))
-- Cap FILE_BUDGET at 60 (even small files have overhead), floor at 10
+- Average tokens per file ≈ average_lines × 4
+- FILE_BUDGET = floor(150000 / avg_tokens_per_file), capped at 60, floored at 10
 
 Report:
 - FILE_BUDGET: [N] files per agent
-- [If total source files ≤ FILE_BUDGET: "SINGLE PASS — all files fit in one agent's context"]
-- [If total source files ≤ FILE_BUDGET × 2: "NEEDS PARTITIONING — files must be split across 2 agent pairs"]
-- [If total source files ≤ FILE_BUDGET × 3: "HEAVY PARTITIONING — files must be split across 3 agent pairs"]
-- [If total source files > FILE_BUDGET × 3: "EXTREME — [N] agent pairs needed, recommend --loop mode"]
+- [If total source files ≤ FILE_BUDGET: "SINGLE PASS"]
+- [If total source files ≤ FILE_BUDGET × 2: "NEEDS PARTITIONING — 2 agent pairs"]
+- [If total source files ≤ FILE_BUDGET × 3: "HEAVY PARTITIONING — 3 agent pairs"]
+- [If total source files > FILE_BUDGET × 3: "EXTREME — recommend --loop mode"]
 
 ## Recommended scan order: [ordered file list — CRITICAL first, then HIGH, then MEDIUM]
 ```

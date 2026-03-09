@@ -104,11 +104,13 @@ If after filtering there are zero source files left, tell the user: "No scannabl
 
 Each subagent has a limited context window. The number of files an agent can reliably process depends on file sizes.
 
-**After Recon completes, read its Context Budget section to get the dynamic FILE_BUDGET.** Recon computes this as:
+**FILE_BUDGET is computed by the triage script (Step 0.4), not by Recon.** The triage script samples 30 files from the codebase, computes average line count, and derives:
 ```
 avg_tokens_per_file = average_lines_per_file * 4
 FILE_BUDGET = floor(150000 / avg_tokens_per_file)   # capped at 60, floored at 10
 ```
+
+Triage also determines the strategy directly, so Step 3 just reads the triage output — no circular dependency.
 
 Then determine partitioning:
 
@@ -121,7 +123,7 @@ Then determine partitioning:
 | FILE_BUDGET*2+1 to FILE_BUDGET*3 | Scaled mode | Sequential chunked Hunters with resume state | 1-2 by directory |
 | > FILE_BUDGET*3 | Large-codebase mode + Loop | Domain-scoped pipelines + boundary audits | Per-domain 1-2 |
 
-If Recon did not produce a FILE_BUDGET (e.g., Recon was skipped), use the default of 40.
+If triage was not run (e.g., Recon was called directly without the orchestrator), use the default FILE_BUDGET of 40.
 
 **File partitioning rules (Extended/Scaled modes):**
 - **Service-aware partitioning (preferred)**: If Recon detected multiple service boundaries (monorepo), partition by service.
@@ -130,7 +132,7 @@ If Recon did not produce a FILE_BUDGET (e.g., Recon was skipped), use the defaul
 - Persist chunk progress in `.claude/bug-hunter-state.json` so restarts do not re-scan done chunks.
 - Test files (CONTEXT-ONLY) are included only when needed for intent.
 
-If the codebase exceeds FILE_BUDGET * 3 and `--loop` was not specified, warn the user: "This codebase has [N] source files (FILE_BUDGET: [B]). For thorough coverage, use `--loop` mode. Large codebases use domain-scoped auditing — see `modes/large-codebase.md`."
+If the triage output shows `needsLoop: true` and `--loop` was not specified, warn the user: "This codebase has [N] source files (FILE_BUDGET: [B]). For thorough coverage, use `--loop` mode. Large codebases use domain-scoped auditing — see `modes/large-codebase.md`."
 
 ## Execution Steps
 
@@ -147,7 +149,54 @@ Before doing anything else, verify the environment:
 
 3. **Node.js available**: Run `node --version` via Bash. If it fails, stop and tell the user: "Node.js is required for doc verification. Please install Node.js to continue."
 
-4. **Context7 availability (optional, non-blocking)**: Run a quick smoke test:
+4. **Run triage (zero-token strategy decision)**:
+
+   Run the triage script BEFORE any LLM phase. This is a pure Node.js filesystem scan — no tokens consumed, runs in <2 seconds even on 2,000+ file repos.
+
+   ```bash
+   node "$SKILL_DIR/scripts/triage.cjs" scan "<TARGET_PATH>" --output .claude/bug-hunter-triage.json
+   ```
+
+   Then read `.claude/bug-hunter-triage.json`. It contains:
+   - `strategy`: which mode to use ("single-file", "small", "parallel", "extended", "scaled", "large-codebase")
+   - `modeFile`: which mode file to read
+   - `fileBudget`: computed from actual file sizes (sampled), not a guess
+   - `totalFiles` / `scannableFiles`: exact count
+   - `domains`: directory-level risk classification (CRITICAL/HIGH/MEDIUM/LOW/CONTEXT-ONLY)
+   - `riskMap`: file-level classification (only present when ≤200 files)
+   - `domainFileLists`: per-domain file lists (only present for large-codebase strategy)
+   - `scanOrder`: priority-ordered list for Hunters
+   - `tokenEstimate`: cost estimates for each pipeline phase
+   - `needsLoop`: whether `--loop` is required
+
+   **Set these variables from the triage output:**
+   ```
+   STRATEGY = triage.strategy
+   FILE_BUDGET = triage.fileBudget
+   TOTAL_FILES = triage.totalFiles
+   SCANNABLE_FILES = triage.scannableFiles
+   NEEDS_LOOP = triage.needsLoop
+   ```
+
+   **Report to the user:**
+   ```
+   Triage: [TOTAL_FILES] source files | FILE_BUDGET: [FILE_BUDGET] | Strategy: [STRATEGY]
+   Domains: [N] CRITICAL, [N] HIGH, [N] MEDIUM, [N] LOW
+   Token estimate: ~[N] tokens for full pipeline
+   ```
+
+   **If triage says `needsLoop: true` but `--loop` was NOT specified**, warn:
+   ```
+   ⚠️ This codebase has [N] source files (FILE_BUDGET: [B]).
+   For thorough coverage, use `--loop` mode. Large codebases use domain-scoped auditing.
+   Proceeding with partial scan — CRITICAL and HIGH domains only.
+   ```
+
+   **Triage replaces the need for Recon to compute FILE_BUDGET.** Recon (Step 4) still runs
+   to do pattern-based classification within domains, but it no longer needs to count files or
+   compute the context budget — triage already did that, for free.
+
+5. **Context7 availability (optional, non-blocking)**: Run a quick smoke test:
    ```
    node "$SKILL_DIR/scripts/context7-api.cjs" search "express" "middleware"
    ```
@@ -155,13 +204,13 @@ Before doing anything else, verify the environment:
    - If it fails, warn the user and set `DOC_LOOKUP_AVAILABLE=false`.
    - Missing `CONTEXT7_API_KEY` must NOT block execution; anonymous lookups may still work.
 
-5. **Verify helper scripts exist**:
+6. **Verify helper scripts exist**:
    ```
-   ls "$SKILL_DIR/scripts/run-bug-hunter.cjs" "$SKILL_DIR/scripts/bug-hunter-state.cjs" "$SKILL_DIR/scripts/code-index.cjs" "$SKILL_DIR/scripts/delta-mode.cjs" "$SKILL_DIR/scripts/payload-guard.cjs" "$SKILL_DIR/scripts/fix-lock.cjs"
+   ls "$SKILL_DIR/scripts/run-bug-hunter.cjs" "$SKILL_DIR/scripts/bug-hunter-state.cjs" "$SKILL_DIR/scripts/code-index.cjs" "$SKILL_DIR/scripts/delta-mode.cjs" "$SKILL_DIR/scripts/payload-guard.cjs" "$SKILL_DIR/scripts/fix-lock.cjs" "$SKILL_DIR/scripts/triage.cjs"
    ```
    If missing, stop and tell the user to update/reinstall the skill.
 
-6. **Select orchestration backend (cross-CLI portability)**:
+7. **Select orchestration backend (cross-CLI portability)**:
 
    Detect which dispatch tools are available in your runtime. Use the FIRST that works:
 
@@ -301,15 +350,15 @@ After reading each prompt, extract the key instructions and pass the content to 
 
 ### Step 3: Determine execution mode
 
-Based on the scan target size, choose the execution mode per the **Context Budget** table.
+**Use the triage output from Step 0.4** — the strategy and FILE_BUDGET are already computed. Do NOT wait for Recon to determine the mode.
 
-Read the corresponding mode file:
-- 1 file: `SKILL_DIR/modes/single-file.md`
-- 2-10 files: `SKILL_DIR/modes/small.md`
-- 11 to FILE_BUDGET: `SKILL_DIR/modes/parallel.md`
-- FILE_BUDGET+1 to FILE_BUDGET*2: `SKILL_DIR/modes/extended.md`
-- FILE_BUDGET*2+1 to FILE_BUDGET*3: `SKILL_DIR/modes/scaled.md`
-- > FILE_BUDGET*3: force `LOOP_MODE=true` and read `SKILL_DIR/modes/large-codebase.md` then `SKILL_DIR/modes/loop.md`
+Read the corresponding mode file using `STRATEGY` from the triage JSON:
+- `single-file`: `SKILL_DIR/modes/single-file.md`
+- `small`: `SKILL_DIR/modes/small.md`
+- `parallel`: `SKILL_DIR/modes/parallel.md`
+- `extended`: `SKILL_DIR/modes/extended.md`
+- `scaled`: `SKILL_DIR/modes/scaled.md`
+- `large-codebase`: force `LOOP_MODE=true` and read `SKILL_DIR/modes/large-codebase.md` then `SKILL_DIR/modes/loop.md`
 
 **Backend override for local-sequential:** If `AGENT_BACKEND = "local-sequential"`, read `SKILL_DIR/modes/local-sequential.md` instead of the size-based mode file. The local-sequential mode handles all sizes internally with its own chunking logic.
 
@@ -362,7 +411,8 @@ Run one rejection pass before locking final findings:
 
 ### 2. Pipeline summary
 ```
-Recon:     mapped N files -> CRITICAL: X | HIGH: Y | MEDIUM: Z | Tests: T | FILE_BUDGET: B
+Triage:    [N] source files | FILE_BUDGET: [B] | Strategy: [STRATEGY]
+Recon:     mapped N files -> CRITICAL: X | HIGH: Y | MEDIUM: Z | Tests: T
 Hunters:   [deep scan findings: W | optional triage findings: T | merged: U unique]
 Gap-fill:  [N files re-scanned, M additional findings] (or "not needed")
 Skeptics:  [challenged X | disproved: D, accepted: A]
