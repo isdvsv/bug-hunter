@@ -20,10 +20,53 @@ test('run-bug-hunter preflight selects available backend by priority', () => {
     '--skill-dir',
     skillDir,
     '--available-backends',
-    'team,local-sequential'
+    'teams,local-sequential'
   ]);
   assert.equal(result.ok, true);
-  assert.equal(result.backend.selected, 'team');
+  assert.equal(result.backend.selected, 'teams');
+});
+
+test('run-bug-hunter preflight tolerates missing optional code-index helper', () => {
+  const sandbox = makeSandbox('run-bug-hunter-preflight-');
+  const runner = resolveSkillScript('run-bug-hunter.cjs');
+  const optionalSkillDir = path.join(sandbox, 'skill');
+  const scriptsDir = path.join(optionalSkillDir, 'scripts');
+  fs.mkdirSync(scriptsDir, { recursive: true });
+
+  for (const fileName of [
+    'run-bug-hunter.cjs',
+    'bug-hunter-state.cjs',
+    'payload-guard.cjs',
+    'fix-lock.cjs',
+    'doc-lookup.cjs',
+    'context7-api.cjs',
+    'delta-mode.cjs'
+  ]) {
+    fs.copyFileSync(resolveSkillScript(fileName), path.join(scriptsDir, fileName));
+  }
+
+  const result = runJson('node', [
+    path.join(scriptsDir, 'run-bug-hunter.cjs'),
+    'preflight',
+    '--skill-dir',
+    optionalSkillDir
+  ]);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.missing, []);
+});
+
+test('triage promotes low-only source files into the scan order', () => {
+  const sandbox = makeSandbox('triage-low-only-');
+  const triage = resolveSkillScript('triage.cjs');
+  const scriptsDir = path.join(sandbox, 'scripts');
+  fs.mkdirSync(scriptsDir, { recursive: true });
+  fs.writeFileSync(path.join(scriptsDir, 'a.cjs'), 'module.exports = 1;\n', 'utf8');
+  fs.writeFileSync(path.join(scriptsDir, 'b.cjs'), 'module.exports = 2;\n', 'utf8');
+
+  const result = runJson('node', [triage, 'scan', sandbox]);
+  assert.equal(result.totalFiles, 2);
+  assert.equal(result.scannableFiles, 2);
+  assert.deepEqual(result.scanOrder, ['scripts/a.cjs', 'scripts/b.cjs']);
 });
 
 test('run-bug-hunter run executes chunk loop with retry and journal', () => {
@@ -165,6 +208,12 @@ test('run-bug-hunter integrates index+delta, fact cards, consistency pass, and f
     '10',
     '--journal-path',
     journalPath,
+    '--consistency-report',
+    consistencyReportPath,
+    '--fix-plan-path',
+    fixPlanPath,
+    '--facts-path',
+    factsPath,
     '--use-index',
     'true',
     '--delta-mode',
@@ -252,6 +301,8 @@ test('run-bug-hunter builds canary fix subset from high-confidence findings', ()
     '5000',
     '--confidence-threshold',
     '75',
+    '--fix-plan-path',
+    fixPlanPath,
     '--canary-size',
     '1'
   ], {
@@ -261,4 +312,92 @@ test('run-bug-hunter builds canary fix subset from high-confidence findings', ()
   const fixPlan = readJson(fixPlanPath);
   assert.equal(fixPlan.totals.eligible >= 1, true);
   assert.equal(fixPlan.totals.canary, 1);
+});
+
+test('run-bug-hunter respects configured delta hops during low-confidence expansion', () => {
+  const sandbox = makeSandbox('run-bug-hunter-delta-hops-');
+  const runner = resolveSkillScript('run-bug-hunter.cjs');
+  const skillDir = path.resolve(__dirname, '..', '..');
+  const filesJsonPath = path.join(sandbox, 'files.json');
+  const changedFilesJsonPath = path.join(sandbox, 'changed-files.json');
+  const statePath = path.join(sandbox, '.claude', 'bug-hunter-state.json');
+  const seenFilesPath = path.join(sandbox, 'seen-files.json');
+  const workerPath = path.join(sandbox, 'worker.cjs');
+  const changedFile = path.join(sandbox, 'src', 'a.ts');
+  const neighborFile = path.join(sandbox, 'src', 'b.ts');
+  const twoHopFile = path.join(sandbox, 'src', 'c.ts');
+
+  fs.mkdirSync(path.dirname(changedFile), { recursive: true });
+  fs.writeFileSync(changedFile, "import { b } from './b';\nexport const a = b();\n", 'utf8');
+  fs.writeFileSync(neighborFile, "import { c } from './c';\nexport function b() { return c(); }\n", 'utf8');
+  fs.writeFileSync(twoHopFile, 'export function c() { return 1; }\n', 'utf8');
+
+  writeJson(filesJsonPath, [changedFile, neighborFile, twoHopFile]);
+  writeJson(changedFilesJsonPath, [changedFile]);
+
+  fs.writeFileSync(workerPath, [
+    '#!/usr/bin/env node',
+    "const fs = require('fs');",
+    "const seenPath = process.argv[process.argv.indexOf('--seen-files') + 1];",
+    "const changedPath = process.argv[process.argv.indexOf('--changed-file') + 1];",
+    "const scanPath = process.argv[process.argv.indexOf('--scan-files-json') + 1];",
+    "const findingsPath = process.argv[process.argv.indexOf('--findings-json') + 1];",
+    "const scan = JSON.parse(fs.readFileSync(scanPath, 'utf8'));",
+    'let seen = [];',
+    "if (fs.existsSync(seenPath)) seen = JSON.parse(fs.readFileSync(seenPath, 'utf8'));",
+    'seen.push(scan);',
+    "fs.writeFileSync(seenPath, JSON.stringify(seen));",
+    "const findings = scan[0] === changedPath ? [{ file: scan[0], lines: '1', claim: 'low confidence', severity: 'Low', confidence: 60 }] : [];",
+    "fs.writeFileSync(findingsPath, JSON.stringify(findings));"
+  ].join('\n'), 'utf8');
+
+  const workerTemplate = [
+    'node',
+    workerPath,
+    '--chunk-id',
+    '{chunkId}',
+    '--scan-files-json',
+    '{scanFilesJson}',
+    '--findings-json',
+    '{findingsJson}',
+    '--seen-files',
+    seenFilesPath,
+    '--changed-file',
+    changedFile
+  ].join(' ');
+
+  const result = runJson('node', [
+    runner,
+    'run',
+    '--skill-dir',
+    skillDir,
+    '--files-json',
+    filesJsonPath,
+    '--changed-files-json',
+    changedFilesJsonPath,
+    '--state',
+    statePath,
+    '--mode',
+    'extended',
+    '--chunk-size',
+    '1',
+    '--worker-cmd',
+    workerTemplate,
+    '--use-index',
+    'true',
+    '--delta-mode',
+    'true',
+    '--delta-hops',
+    '1',
+    '--expand-on-low-confidence',
+    'true',
+    '--confidence-threshold',
+    '75'
+  ], {
+    cwd: sandbox
+  });
+
+  assert.equal(result.ok, true);
+  const seenFiles = readJson(seenFilesPath).flat();
+  assert.equal(seenFiles.includes(twoHopFile), false);
 });

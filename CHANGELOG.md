@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-03-10 13:26
+
+- `scripts/triage.cjs`: LOW-only repositories promoted into `scanOrder` so script-heavy codebases do not collapse to zero scannable files
+- `scripts/run-bug-hunter.cjs`: `teams` backend name aligned with the documented dispatch mode
+- `scripts/run-bug-hunter.cjs`: `code-index.cjs` treated as optional during preflight and gated only when index-backed flows are requested
+- `scripts/run-bug-hunter.cjs`: low-confidence delta expansion now reuses the caller's configured `--delta-hops` value
+- `scripts/tests/run-bug-hunter.test.cjs`: regressions for LOW-only triage, optional `code-index`, `teams` backend selection, and delta-hop expansion
+
 ## 2.4.0 — 2026-03-10
 
 ### Context Hub integration — curated docs with Context7 fallback

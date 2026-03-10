@@ -339,6 +339,9 @@ function scan(targetPath, options) {
   let scanOrder;
   if (riskMap) {
     scanOrder = [...riskMap.critical, ...riskMap.high, ...riskMap.medium];
+    if (scanOrder.length === 0 && riskMap.low.length > 0) {
+      scanOrder = [...riskMap.low];
+    }
   } else {
     // For large codebases, just list domains in priority order
     scanOrder = domains
@@ -348,7 +351,7 @@ function scan(targetPath, options) {
 
   // Token estimates
   const scannable = riskMap
-    ? riskMap.critical.length + riskMap.high.length + riskMap.medium.length
+    ? scanOrder.length
     : domains.filter((d) => !['CONTEXT-ONLY', 'LOW'].includes(d.tier)).reduce((s, d) => s + d.fileCount, 0);
   const tokensPerFile = budget.avgTokens || 400;
   const reconTokens = includeFileRiskMap ? Math.min(totalFiles * 20, 5000) : Math.min(domains.length * 100, 3000);
@@ -372,6 +375,9 @@ function scan(targetPath, options) {
   }
   if (totalFiles > 500 && !includeFileRiskMap) {
     recommendations.push('File-level risk map omitted for performance. Recon should classify files within each domain.');
+  }
+  if (riskMap && riskMap.critical.length + riskMap.high.length + riskMap.medium.length === 0 && riskMap.low.length > 0) {
+    recommendations.push('Only LOW-tier source files detected — promote them into scan order to avoid an empty audit.');
   }
 
   const result = {

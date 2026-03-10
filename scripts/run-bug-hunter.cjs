@@ -4,7 +4,7 @@ const childProcess = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const BACKEND_PRIORITY = ['spawn_agent', 'subagent', 'team', 'local-sequential'];
+const BACKEND_PRIORITY = ['spawn_agent', 'subagent', 'teams', 'local-sequential'];
 const DEFAULT_TIMEOUT_MS = 120000;
 const DEFAULT_MAX_RETRIES = 1;
 const DEFAULT_BACKOFF_MS = 1000;
@@ -117,7 +117,6 @@ function requiredScripts(skillDir) {
     path.join(skillDir, 'scripts', 'fix-lock.cjs'),
     path.join(skillDir, 'scripts', 'doc-lookup.cjs'),
     path.join(skillDir, 'scripts', 'context7-api.cjs'),
-    path.join(skillDir, 'scripts', 'code-index.cjs'),
     path.join(skillDir, 'scripts', 'delta-mode.cjs')
   ];
 }
@@ -579,6 +578,23 @@ function prepareIndexAndScope({
   let deltaResult = null;
 
   if (useIndex || deltaMode) {
+    if (!fs.existsSync(codeIndexScript)) {
+      if (deltaMode) {
+        throw new Error('code-index.cjs is required when --delta-mode=true');
+      }
+      appendJournal(journalPath, {
+        event: 'index-skip',
+        reason: 'missing-code-index',
+        codeIndexScript
+      });
+      return {
+        indexPath: null,
+        deltaMode: false,
+        deltaHops,
+        deltaResult: null,
+        activeFilesJsonPath
+      };
+    }
     runJsonScript(codeIndexScript, ['build', indexPath, filesJsonPath, process.cwd()]);
     appendJournal(journalPath, {
       event: 'index-built',
@@ -610,6 +626,7 @@ function prepareIndexAndScope({
   return {
     indexPath: (useIndex || deltaMode) ? indexPath : null,
     deltaMode,
+    deltaHops,
     deltaResult,
     activeFilesJsonPath
   };
@@ -704,7 +721,7 @@ async function runPipeline(options) {
         scope.indexPath,
         lowConfidenceFilesJsonPath,
         selectedFilesJsonPath,
-        String(DEFAULT_DELTA_HOPS)
+        String(scope.deltaHops || DEFAULT_DELTA_HOPS)
       ]);
       const expandedFiles = [
         ...toArray(expansion.expanded),
