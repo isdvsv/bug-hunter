@@ -7,7 +7,7 @@ All phases are dispatched using the `AGENT_BACKEND` selected during SKILL prefli
 
 ## Triage Integration
 
-Before any phase, check for `.claude/bug-hunter-triage.json` (written by Step 1). If present:
+Before any phase, check for `.bug-hunter/triage.json` (written by Step 1). If present:
 - Use `triage.riskMap` as the risk map — skip Recon's file classification.
 - Use `triage.scanOrder` as the chunk-building source (files already priority-ordered).
 - Use `triage.fileBudget` as FILE_BUDGET and chunk size cap.
@@ -30,14 +30,14 @@ Same as Extended mode: Recon enriches triage data with tech stack and patterns. 
 
 Same as Extended mode. Partition from `triage.scanOrder` or risk map. Initialize state:
 ```bash
-node "$SKILL_DIR/scripts/bug-hunter-state.cjs" init ".claude/bug-hunter-state.json" "scaled" ".claude/source-files.json" 30
+node "$SKILL_DIR/scripts/bug-hunter-state.cjs" init ".bug-hunter/state.json" "scaled" ".bug-hunter/source-files.json" 30
 ```
 
 ### 5b. Execute chunks with hash-based skip filtering
 
 Before each chunk, apply skip filtering to avoid re-scanning files already processed (handles resume after interruption):
 ```bash
-node "$SKILL_DIR/scripts/bug-hunter-state.cjs" hash-filter ".claude/bug-hunter-state.json" ".claude/chunk-<id>-files.json"
+node "$SKILL_DIR/scripts/bug-hunter-state.cjs" hash-filter ".bug-hunter/state.json" ".bug-hunter/chunk-<id>-files.json"
 ```
 
 For each chunk: dispatch Hunter, record findings, mark done — same pattern as Extended mode.
@@ -45,7 +45,7 @@ For each chunk: dispatch Hunter, record findings, mark done — same pattern as 
 ### 5c. Cross-chunk consistency
 
 After all chunks complete:
-1. Merge findings from state into `.claude/bug-hunter-findings.md`.
+1. Merge findings from state into `.bug-hunter/findings.md`.
 2. Run consistency check: look for duplicate BUG-IDs across chunks and conflicting claims on the same file/line.
 3. Resolve conflicts: keep the finding with the stronger evidence.
 

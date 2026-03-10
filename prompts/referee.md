@@ -6,7 +6,7 @@ You will receive both the Hunter findings file and the Skeptic challenges file. 
 
 ## Output Destination
 
-Write your complete Referee verdict report to the file path provided in your assignment (typically `.claude/bug-hunter-referee.md`). If no path was provided, output to stdout. This is the FINAL phase — your verdicts determine which bugs are confirmed.
+Write your complete Referee verdict report to the file path provided in your assignment (typically `.bug-hunter/referee.md`). If no path was provided, output to stdout. This is the FINAL phase — your verdicts determine which bugs are confirmed.
 
 ## Scope Rules
 
@@ -67,13 +67,55 @@ Per bug:
 - **Suggested fix:** [concrete: function name, check to add, line to change]
 ```
 
+### Security enrichment (confirmed security bugs only)
+
+For each finding with `category: security` that you confirm as REAL BUG, add these fields below the verdict:
+
+**Reachability** (required for all security findings):
+- `EXTERNAL` — reachable from unauthenticated external input (public API, form, URL)
+- `AUTHENTICATED` — requires valid user session to reach
+- `INTERNAL` — only reachable from internal services / admin
+- `UNREACHABLE` — dead code or blocked by conditions (should not be REAL BUG)
+
+**Exploitability** (required for all security findings):
+- `EASY` — standard technique, no special conditions, public knowledge
+- `MEDIUM` — requires specific conditions, timing, or chained vulns
+- `HARD` — requires insider knowledge, rare conditions, advanced techniques
+
+**CVSS** (required for CRITICAL/HIGH security only):
+Calculate CVSS 3.1 base score. Metrics: AV=Attack Vector (N/A/L/P), AC=Complexity (L/H), PR=Privileges (N/L/H), UI=User Interaction (N/R), S=Scope (U/C), C/I/A=Impact (N/L/H).
+Format: `CVSS:3.1/AV:_/AC:_/PR:_/UI:_/S:_/C:_/I:_/A:_ (score)`
+
+**Proof of Concept** (required for CRITICAL/HIGH security only):
+Generate a minimal, benign PoC:
+- **Payload:** [the malicious input]
+- **Request:** [HTTP method + URL + body, or CLI command]
+- **Expected:** [what should happen (secure behavior)]
+- **Actual:** [what does happen (vulnerable behavior)]
+
+Enriched security verdict example:
+```
+**VERDICT: REAL BUG** | Confidence: High
+- **Reachability:** EXTERNAL
+- **Exploitability:** EASY
+- **CVSS:** CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N (9.1)
+- **Exploit path:** User submits → Express parses → SQL interpolated → DB executes
+- **Proof of Concept:**
+  - Payload: `' OR '1'='1`
+  - Request: `GET /api/users?search=test%27%20OR%20%271%27%3D%271`
+  - Expected: Returns matching users only
+  - Actual: Returns ALL users (SQL injection bypasses WHERE clause)
+```
+
+Non-security findings use the standard verdict format above (no enrichment needed).
+
 ## Final Report
 
 **VERIFIED BUG REPORT**
 
 Stats: Total reported | Dismissed | Confirmed (Critical/Medium/Low) | Independently verified vs Evidence-based | Per-Hunter accuracy (if parallel) | Skeptic accuracy
 
-Confirmed bugs table: # | Severity | File | Lines | Description | Fix | Verification
+Confirmed bugs table: # | Severity | STRIDE | CWE | Reachability | File | Lines | Description | Fix | Verification
 
 Low-confidence items (flagged for manual review): file + one-line uncertainty reason.
 

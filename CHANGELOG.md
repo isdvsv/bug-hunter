@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.1.0 — 2026-03-10
+
+### v3 security pipeline + dependency scanner reliability
+
+- STRIDE/CWE fields in Hunter findings format, with CWE quick-reference mapping for security categories
+- Skeptic hard-exclusion fast path (15 false-positive classes) before deep review
+- Referee security enrichment: reachability, exploitability, CVSS 3.1, and PoC blocks for critical/high security bugs
+- Threat model support: `--threat-model` flag, `prompts/threat-model.md`, Recon/Hunter threat-context wiring
+- Dependency scan support: `--deps` flag and `scripts/dep-scan.cjs` output to `.bug-hunter/dep-findings.json`
+- JSON report contract: `.bug-hunter/findings.json` plus canonical `.bug-hunter/report.md`
+- Few-shot calibration examples for Hunter and Skeptic in `prompts/examples/`
+- `dep-scan.cjs` lockfile-aware audits (`npm`, `pnpm`, `yarn`, `bun`) and non-zero audit exit handling so vulnerability exits are not misreported as scanner failures
+
 ## 2.0.0 — 2026-03-10
 
 ### Structural overhaul — triage pipeline + 36% token reduction
@@ -38,7 +51,7 @@
 ### Zero-token pre-recon triage (`triage.cjs`)
 - `scripts/triage.cjs` runs before any LLM agent — 0 tokens, <2s for 2,000+ files
 - FILE_BUDGET, strategy, and domain map decided by triage, not Recon
-- Writes `.claude/bug-hunter-triage.json` with strategy, fileBudget, domains, riskMap, scanOrder
+- Writes `.bug-hunter/triage.json` with strategy, fileBudget, domains, riskMap, scanOrder
 - `local-sequential.md` with full phase-by-phase instructions
 - Subagent wrapper template in `templates/subagent-wrapper.md`
 - Coverage enforcement — partial audits produce explicit warnings

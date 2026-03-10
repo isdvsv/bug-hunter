@@ -91,7 +91,7 @@ When you have finished your analysis:
 | `{TARGET_DESCRIPTION}` | What is being scanned | "FindCoffee monorepo, packages/auth + packages/order" |
 | `{SKILL_DIR}` | Absolute path to the bug-hunter skill directory | `/Users/codex/.agents/skills/bug-hunter` |
 | `{FILE_LIST}` | Newline-separated file paths in scan order | CRITICAL files first, then HIGH, then MEDIUM |
-| `{RISK_MAP}` | Recon output risk classification | From `.claude/bug-hunter-recon.md` |
+| `{RISK_MAP}` | Recon output risk classification | From `.bug-hunter/recon.md` |
 | `{TECH_STACK}` | Framework, auth, DB, key dependencies | "Express + JWT + Prisma + Redis" |
 | `{PHASE_SPECIFIC_CONTEXT}` | Extra context for this phase | For Skeptic: the Hunter findings. For Referee: findings + Skeptic challenges. |
-| `{OUTPUT_FILE_PATH}` | Where to write the output | `.claude/bug-hunter-findings.md` |
+| `{OUTPUT_FILE_PATH}` | Where to write the output | `.bug-hunter/findings.md` |

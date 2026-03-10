@@ -9,7 +9,7 @@ When both `--loop` and `--fix` are set, the ralph-loop wraps the ENTIRE pipeline
 
 ## Coverage file extension for fix mode
 
-The `.claude/bug-hunter-coverage.md` file gains additional sections:
+The `.bug-hunter/coverage.md` file gains additional sections:
 
 ```markdown
 ## Fixes
@@ -78,7 +78,7 @@ When `--loop --fix` is active, the TODO.md includes fix tasks:
 
 ## Ralph-loop state file for fix mode
 
-When `--loop --fix`, the `.claude/ralph-loop.local.md` is:
+When `--loop --fix`, the `.bug-hunter/ralph-loop.local.md` is:
 
 ```markdown
 ---
@@ -97,13 +97,13 @@ Find all bugs in the codebase, fix them, and verify fixes pass tests.
 Complete when TODO.md shows [x] ALL_TASKS_COMPLETE
 
 ## Verification
-Check .claude/bug-hunter-coverage.md:
+Check .bug-hunter/coverage.md:
 - All CRITICAL/HIGH files must show DONE in Files section
 - All bugs must show FIXED (latest entry) in Fixes section
 - Latest Test Results line must show 0 new failures
 
 ## Instructions
-1. Read .claude/bug-hunter-coverage.md for previous iteration state
+1. Read .bug-hunter/coverage.md for previous iteration state
 2. Parse Files table — collect unscanned CRITICAL/HIGH files
 3. Parse Fixes table — collect unfixed bugs (latest entry: FIX_REVERTED, FIX_FAILED, FIX_CONFLICT, SKIPPED, FIXER_BUG)
 4. If unscanned files exist: run Phase 1 (find pipeline) on them

@@ -16,3 +16,6 @@
 # Test fixture git repo (self-contained for testing)
 test-fixture/.git/
 tmp/
+.bug-hunter/
+INTEGRATION-PLAN-v3.md
+FIX-PLAN*.md

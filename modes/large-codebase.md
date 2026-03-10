@@ -13,7 +13,7 @@ This mode handles truly large codebases (monorepos, enterprise apps, 200+ source
 
 ### Tier 0: Rapid Recon (already done by triage)
 
-**If triage was run (Step 1)**, Tier 0 is already complete. The triage JSON at `.claude/bug-hunter-triage.json` contains:
+**If triage was run (Step 1)**, Tier 0 is already complete. The triage JSON at `.bug-hunter/triage.json` contains:
 - `domains`: all domains with tier classification, file counts, and risk breakdown
 - `domainFileLists`: per-domain file paths — use these directly as the file list for each Tier 1 domain audit
 - `fileBudget`, `scanOrder`, `tokenEstimate`
@@ -41,7 +41,7 @@ Read the triage JSON and proceed directly to Tier 1. Do NOT re-scan the filesyst
    - MEDIUM domains: utilities, helpers, formatting, UI components
    - LOW domains: tests, docs, config, scripts, migrations
 
-4. **Write the domain map** to `.claude/bug-hunter-domain-map.json`:
+4. **Write the domain map** to `.bug-hunter/domain-map.json`:
    ```json
    {
      "domains": [
@@ -77,10 +77,10 @@ For each domain (CRITICAL first, then HIGH, then MEDIUM):
   5. Run Referee on THIS domain only → confirmed bugs
 
   Write domain results to:
-    .claude/domains/<domain-name>/recon.md
-    .claude/domains/<domain-name>/findings.md
-    .claude/domains/<domain-name>/skeptic.md
-    .claude/domains/<domain-name>/referee.md
+    .bug-hunter/domains/<domain-name>/recon.md
+    .bug-hunter/domains/<domain-name>/findings.md
+    .bug-hunter/domains/<domain-name>/skeptic.md
+    .bug-hunter/domains/<domain-name>/referee.md
 
   Record in state:
     node "$SKILL_DIR/scripts/bug-hunter-state.cjs" record-findings ...
@@ -117,7 +117,7 @@ After all individual domains are audited, run a **boundary-focused pass** that s
 
 4. **Challenge + Verify** boundary findings through the normal Skeptic → Referee pipeline.
 
-Write boundary results to `.claude/domains/_boundaries/`.
+Write boundary results to `.bug-hunter/domains/_boundaries/`.
 
 ### Tier 3: Merge and Report
 
@@ -130,12 +130,12 @@ After all domains + boundaries are audited:
 
 ## State Management for Large Codebases
 
-Use `.claude/bug-hunter-state.json` with domain-aware structure:
+Use `.bug-hunter/state.json` with domain-aware structure:
 
 ```json
 {
   "mode": "large-codebase",
-  "domainMap": ".claude/bug-hunter-domain-map.json",
+  "domainMap": ".bug-hunter/domain-map.json",
   "domains": {
     "packages-auth": { "status": "done", "findings": 5, "confirmed": 3 },
     "packages-billing": { "status": "in_progress", "findings": 0, "confirmed": 0 },
@@ -177,7 +177,7 @@ Use `--exhaustive` to include all domains.
 
 ## Optimization: Delta-first for repeat scans
 
-If `.claude/bug-hunter-state.json` exists from a previous run AND `--delta` is specified:
+If `.bug-hunter/state.json` exists from a previous run AND `--delta` is specified:
 1. Run `git diff --name-only <last-commit>` to find changed files.
 2. Map changed files to their domains.
 3. Re-audit ONLY the affected domains (not the whole codebase).

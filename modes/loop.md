@@ -4,18 +4,18 @@ When `--loop` is present, the bug-hunter wraps itself in a ralph-loop that keeps
 
 ## How it works
 
-1. **First iteration**: Run the normal pipeline (Recon -> Hunters -> Skeptics -> Referee). At the end, write a coverage report to `.claude/bug-hunter-coverage.md` using the machine-parseable format below.
+1. **First iteration**: Run the normal pipeline (Recon -> Hunters -> Skeptics -> Referee). At the end, write a coverage report to `.bug-hunter/coverage.md` using the machine-parseable format below.
 
 2. **Coverage check**: After each iteration, evaluate:
    - If ALL CRITICAL and HIGH files show status DONE -> mark `[x] ALL_TASKS_COMPLETE` in TODO.md -> loop ends
    - If any CRITICAL/HIGH files are SKIPPED or PARTIAL -> update TODO.md with remaining work -> loop continues
    - If only MEDIUM files remain uncovered -> mark complete (MEDIUM gaps are acceptable)
 
-3. **Subsequent iterations**: Each new iteration reads `.claude/bug-hunter-coverage.md` to see what's already been done, then runs the pipeline ONLY on uncovered files. New findings are appended to the cumulative bug list.
+3. **Subsequent iterations**: Each new iteration reads `.bug-hunter/coverage.md` to see what's already been done, then runs the pipeline ONLY on uncovered files. New findings are appended to the cumulative bug list.
 
 ## Coverage file format (machine-parseable)
 
-**`.claude/bug-hunter-coverage.md`:**
+**`.bug-hunter/coverage.md`:**
 ```markdown
 # Bug Hunt Coverage
 SCHEMA_VERSION: 2
@@ -49,7 +49,7 @@ BUG-12|Low|src/api/users.ts|120-125|Missing null check on optional profile field
 
 When `--loop` is detected, before running Step 1, create these files:
 
-**`.claude/ralph-loop.local.md`:**
+**`.bug-hunter/ralph-loop.local.md`:**
 ```markdown
 ---
 active: true
@@ -67,10 +67,10 @@ Complete adversarial bug audit with full coverage of all CRITICAL and HIGH risk 
 Complete when TODO.md shows [x] ALL_TASKS_COMPLETE
 
 ## Verification
-Check .claude/bug-hunter-coverage.md — all CRITICAL/HIGH files must show DONE.
+Check .bug-hunter/coverage.md — all CRITICAL/HIGH files must show DONE.
 
 ## Instructions
-1. Read .claude/bug-hunter-coverage.md for previous iteration state
+1. Read .bug-hunter/coverage.md for previous iteration state
 2. Parse the Files table — collect all lines where STATUS is not DONE and TIER is CRITICAL or HIGH
 3. Run bug-hunter pipeline on those files only
 4. Update coverage file: change STATUS to DONE, add BUG-IDs
@@ -96,14 +96,14 @@ At the start of each iteration, validate the coverage file:
 1. Check `SCHEMA_VERSION: 2` exists on line 2 — if missing, this is a v1 file; migrate by adding the header
 2. Parse the CHECKSUM field: `[file_lines]|[bug_lines]` — count actual lines in Files and Bugs sections
 3. If counts don't match the checksum, the file may be corrupted. Warn: "Coverage file checksum mismatch (expected X|Y, got A|B). Re-scanning affected files." Then set any files with mismatched data to STATUS=PARTIAL for re-scan.
-4. If the file fails to parse entirely (malformed lines, missing sections), rename it to `.claude/bug-hunter-coverage.md.bak` and start fresh. Warn user.
+4. If the file fails to parse entirely (malformed lines, missing sections), rename it to `.bug-hunter/coverage.md.bak` and start fresh. Warn user.
 
 Update the CHECKSUM every time you write to the coverage file.
 
 ## Iteration behavior
 
 Each iteration after the first:
-1. Read `.claude/bug-hunter-coverage.md` — parse the Files table
+1. Read `.bug-hunter/coverage.md` — parse the Files table
 2. Collect all lines where STATUS != DONE and TIER is CRITICAL or HIGH
 3. If none remain -> update TODO.md with `[x] ALL_TASKS_COMPLETE` -> output `<promise>DONE</promise>`
 4. Otherwise, run the pipeline on remaining files only (use small/parallel mode based on count)
@@ -115,5 +115,5 @@ Each iteration after the first:
 
 - Max 10 iterations by default (adjustable in the state file)
 - Each iteration only scans NEW files — no re-scanning already-DONE files
-- User can stop anytime: `rm .claude/ralph-loop.local.md`
-- All state is in `.claude/bug-hunter-coverage.md` — fully resumable, machine-parseable
+- User can stop anytime: `rm .bug-hunter/ralph-loop.local.md`
+- All state is in `.bug-hunter/coverage.md` — fully resumable, machine-parseable

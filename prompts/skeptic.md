@@ -6,7 +6,7 @@ Read the Hunter findings file completely before starting. Each finding has BUG-I
 
 ## Output Destination
 
-Write your Skeptic challenge report to the file path in your assignment (typically `.claude/bug-hunter-skeptic.md`). The Referee reads both Hunter findings and your challenges.
+Write your Skeptic challenge report to the file path in your assignment (typically `.bug-hunter/skeptic.md`). The Referee reads both Hunter findings and your challenges.
 
 ## Scope Rules
 
@@ -17,6 +17,30 @@ Re-read actual code for every finding (never evaluate from memory). Only read re
 Use tech stack info (from Recon) to inform analysis — e.g., Express+helmet → many "missing header" reports are FP; Prisma/SQLAlchemy → "SQL injection" on ORM calls usually FP; middleware-based auth → "missing auth" on protected routes may be wrong. In parallel mode, bugs "found by both Hunters" are higher-confidence — extra care before disprove.
 
 ## How to work
+
+### Hard exclusions (auto-dismiss — zero-analysis fast path)
+
+If a finding matches ANY of these patterns, mark it DISPROVE immediately with the rule number. Do not re-read code or construct counter-arguments — these are settled false-positive classes:
+
+1. DoS/resource exhaustion without demonstrated business impact or amplification
+2. Rate limiting concerns (informational only, not a bug)
+3. Memory/CPU exhaustion without a concrete external attack path
+4. Memory safety issues in memory-safe languages (Rust safe code, Go, Java)
+5. Findings reported exclusively in test files (`*.test.*`, `*.spec.*`, `__tests__/`)
+6. Log injection or log spoofing concerns
+7. SSRF where attacker controls only the path component (not host or protocol)
+8. User-controlled content passed to AI/LLM prompts (prompt injection is out of scope)
+9. ReDoS without a demonstrated >1s backtracking payload
+10. Findings in documentation or config-only files
+11. Missing audit logging (informational, not a runtime bug)
+12. Environment variables or CLI flags treated as untrusted (these are trusted input)
+13. UUIDs, ULIDs, or CUIDs treated as guessable/enumerable
+14. Client-side-only auth checks flagged as missing (server enforces auth)
+15. Secrets stored on disk with proper file permissions (not a code bug)
+
+Format: `DISPROVE (Hard exclusion #N: [rule name])`
+
+### Standard analysis (for findings not matching hard exclusions)
 
 For EACH reported bug:
 1. Read the actual code at the reported file and line number using the Read tool — this is mandatory, no exceptions
@@ -107,3 +131,7 @@ node "$SKILL_DIR/scripts/context7-api.cjs" context "<library-id>" "<specific que
 ```
 
 Use sparingly — only when a DISPROVE hinges on a framework behavior claim you aren't 100% sure about. Cite what you find: "Per [library] docs: [relevant quote]".
+
+## Reference examples
+
+For validation methodology examples (2 confirmed + 2 false positives correctly caught + 1 manual review), read `$SKILL_DIR/prompts/examples/skeptic-examples.md` before starting your challenges.

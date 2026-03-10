@@ -8,11 +8,11 @@ This is NOT a degraded mode. The skill is designed to work fully here.
 
 You (the orchestrating agent) play each role yourself, sequentially. Between phases you **write outputs to files** so later phases can reference them without holding everything in working memory.
 
-All state files go in `.claude/` relative to the working directory.
+All state files go in `.bug-hunter/` relative to the working directory.
 
 ## Phase A: Recon (map the codebase)
 
-**Check for triage data first.** The orchestrator runs `triage.cjs` in Step 1 and writes `.claude/bug-hunter-triage.json`. If this file exists, triage has already:
+**Check for triage data first.** The orchestrator runs `triage.cjs` in Step 1 and writes `.bug-hunter/triage.json`. If this file exists, triage has already:
 - Discovered and classified all source files (domains + riskMap)
 - Computed FILE_BUDGET from actual file sizes
 - Built a priority-ordered scanOrder for Hunters
@@ -20,19 +20,19 @@ All state files go in `.claude/` relative to the working directory.
 
 1. Read `SKILL_DIR/prompts/recon.md` with the Read tool — do NOT act from memory.
 
-2. **If `.claude/bug-hunter-triage.json` exists:**
+2. **If `.bug-hunter/triage.json` exists:**
    - Read it. Use `triage.riskMap` as the initial risk map (skip file discovery + classification).
    - Use `triage.fileBudget` as FILE_BUDGET (skip computation).
    - Use `triage.scanOrder` as the file order for Phase B.
    - Recon's remaining job: read 3-5 key files from CRITICAL domains to identify **tech stack** (framework, auth mechanism, database, key dependencies) and **trust boundary patterns** (how routes are defined, how auth middleware is applied, etc.).
    - If git is available, check recently changed files with `git log`.
-   - Write your Recon output to `.claude/bug-hunter-recon.md` — include the tech stack, patterns, and the triage-provided risk map.
+   - Write your Recon output to `.bug-hunter/recon.md` — include the tech stack, patterns, and the triage-provided risk map.
 
-3. **If `.claude/bug-hunter-triage.json` does NOT exist** (fallback — Recon called directly):
+3. **If `.bug-hunter/triage.json` does NOT exist** (fallback — Recon called directly):
    - Execute the full Recon instructions: discover files, classify, compute FILE_BUDGET.
    - Use search tools (`rg`, `grep`, or manual Read) to find trust boundaries.
    - Measure file sizes to compute FILE_BUDGET (default: 40 if measurement fails).
-   - Write complete output to `.claude/bug-hunter-recon.md`.
+   - Write complete output to `.bug-hunter/recon.md`.
 
 4. Parse your output: extract the risk map, FILE_BUDGET, tech stack, and scan order. You will use these in all subsequent phases.
 
@@ -49,7 +49,7 @@ All state files go in `.claude/` relative to the working directory.
    - Apply the mandatory security checklist sweep (Phase 3 in hunter.md) on every CRITICAL and HIGH file.
    - Track which files you actually read — be honest about coverage.
    - For each bug found, record it in the exact BUG-N format specified in hunter.md.
-5. Write your complete findings to `.claude/bug-hunter-findings.md`.
+5. Write your complete findings to `.bug-hunter/findings.md`.
 
 **Context management:** If you notice earlier files becoming hazy in your memory:
 - STOP expanding to new files.
@@ -63,28 +63,28 @@ If the Recon risk map contains more files than FILE_BUDGET, do NOT try to read t
 
 1. Initialize state:
    ```bash
-   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" init ".claude/bug-hunter-state.json" "local-sequential" ".claude/source-files.json" 30
+   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" init ".bug-hunter/state.json" "local-sequential" ".bug-hunter/source-files.json" 30
    ```
 2. For each chunk:
    a. Get next chunk:
       ```bash
-      node "$SKILL_DIR/scripts/bug-hunter-state.cjs" next-chunk ".claude/bug-hunter-state.json"
+      node "$SKILL_DIR/scripts/bug-hunter-state.cjs" next-chunk ".bug-hunter/state.json"
       ```
    b. Mark in-progress:
       ```bash
-      node "$SKILL_DIR/scripts/bug-hunter-state.cjs" mark-chunk ".claude/bug-hunter-state.json" "<chunk-id>" in_progress
+      node "$SKILL_DIR/scripts/bug-hunter-state.cjs" mark-chunk ".bug-hunter/state.json" "<chunk-id>" in_progress
       ```
    c. Run the Hunter scan on this chunk's files only.
-   d. Write chunk findings to `.claude/chunk-<id>-findings.json`.
+   d. Write chunk findings to `.bug-hunter/chunk-<id>-findings.json`.
    e. Record findings in state:
       ```bash
-      node "$SKILL_DIR/scripts/bug-hunter-state.cjs" record-findings ".claude/bug-hunter-state.json" ".claude/chunk-<id>-findings.json" "local-sequential"
+      node "$SKILL_DIR/scripts/bug-hunter-state.cjs" record-findings ".bug-hunter/state.json" ".bug-hunter/chunk-<id>-findings.json" "local-sequential"
       ```
    f. Mark done:
       ```bash
-      node "$SKILL_DIR/scripts/bug-hunter-state.cjs" mark-chunk ".claude/bug-hunter-state.json" "<chunk-id>" done
+      node "$SKILL_DIR/scripts/bug-hunter-state.cjs" mark-chunk ".bug-hunter/state.json" "<chunk-id>" done
       ```
-3. After all chunks: merge findings from `.claude/bug-hunter-state.json` into `.claude/bug-hunter-findings.md`.
+3. After all chunks: merge findings from `.bug-hunter/state.json` into `.bug-hunter/findings.md`.
 
 **Gap-fill:** After scanning, compare FILES SCANNED against the risk map. If any CRITICAL or HIGH files are in FILES SKIPPED, read them now and append any new findings. If you truly cannot read them (context exhaustion), leave them in FILES SKIPPED.
 
@@ -95,7 +95,7 @@ If TOTAL FINDINGS: 0, skip Phases C and D. Go directly to Step 7 (Final Report) 
 1. Read `SKILL_DIR/prompts/skeptic.md` with the Read tool.
 2. Read `SKILL_DIR/prompts/doc-lookup.md` with the Read tool.
 3. **Switch mindset completely**: you are now the Skeptic. Your job is to DISPROVE false positives. Forget the pride of finding them — you want to kill weak claims.
-4. Read `.claude/bug-hunter-findings.md` to get the findings list.
+4. Read `.bug-hunter/findings.md` to get the findings list.
 5. For EACH finding:
    - Re-read the actual code at the reported file and line with the Read tool. This is MANDATORY — do not evaluate from memory.
    - Read all cross-referenced files.
@@ -103,7 +103,7 @@ If TOTAL FINDINGS: 0, skip Phases C and D. Go directly to Step 7 (Final Report) 
    - Check framework/middleware protections the Hunter may have missed.
    - Apply the risk calculation: `EV = (confidence% × points) - ((100 - confidence%) × 2 × points)`. Only DISPROVE when EV is positive (confidence > 67%).
    - For Critical bugs: need >67% confidence AND all cross-references read.
-6. Write your complete Skeptic output to `.claude/bug-hunter-skeptic.md` in the format from skeptic.md.
+6. Write your complete Skeptic output to `.bug-hunter/skeptic.md` in the format from skeptic.md.
 
 **Important:** When switching from Hunter to Skeptic, genuinely try to disprove your own findings. The point of this phase is adversarial review. If you cannot genuinely argue against a finding, ACCEPT it and move on — do not waste time rubber-stamping.
 
@@ -111,12 +111,12 @@ If TOTAL FINDINGS: 0, skip Phases C and D. Go directly to Step 7 (Final Report) 
 
 1. Read `SKILL_DIR/prompts/referee.md` with the Read tool.
 2. **Switch mindset**: you are the impartial Referee. You trust neither the Hunter nor the Skeptic.
-3. Read both `.claude/bug-hunter-findings.md` and `.claude/bug-hunter-skeptic.md`.
+3. Read both `.bug-hunter/findings.md` and `.bug-hunter/skeptic.md`.
 4. For each finding:
    - **Tier 1 (all Critical + top 15 by severity):** Re-read the actual code yourself a THIRD time using the Read tool. Construct the runtime trigger independently. Make your own judgment.
    - **Tier 2 (remaining):** Evaluate evidence quality. Whose code quotes are more specific? Whose runtime trigger is more concrete?
 5. Make final REAL BUG / NOT A BUG verdicts with severity calibration.
-6. Write the final Referee report to `.claude/bug-hunter-referee.md`.
+6. Write the final Referee report to `.bug-hunter/referee.md`.
 7. Proceed to Step 7 (Final Report) in SKILL.md.
 
 ## State Files Summary
@@ -125,12 +125,12 @@ After a complete local-sequential run, these files should exist:
 
 | File | Phase | Content |
 |------|-------|---------|
-| `.claude/bug-hunter-recon.md` | A | Risk map, file metrics, tech stack |
-| `.claude/bug-hunter-findings.md` | B | All Hunter findings in BUG-N format |
-| `.claude/bug-hunter-skeptic.md` | C | Skeptic challenges and decisions |
-| `.claude/bug-hunter-referee.md` | D | Final verdicts and confirmed bugs |
-| `.claude/bug-hunter-state.json` | B (chunked) | Chunk progress, findings ledger |
-| `.claude/source-files.json` | A | Source file list (for state init) |
+| `.bug-hunter/recon.md` | A | Risk map, file metrics, tech stack |
+| `.bug-hunter/findings.md` | B | All Hunter findings in BUG-N format |
+| `.bug-hunter/skeptic.md` | C | Skeptic challenges and decisions |
+| `.bug-hunter/referee.md` | D | Final verdicts and confirmed bugs |
+| `.bug-hunter/state.json` | B (chunked) | Chunk progress, findings ledger |
+| `.bug-hunter/source-files.json` | A | Source file list (for state init) |
 
 ## Coverage Enforcement
 

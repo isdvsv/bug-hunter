@@ -22,12 +22,12 @@ You execute the role yourself:
 2. Read the wrapper template: `read({ path: "$SKILL_DIR/templates/subagent-wrapper.md" })`
 3. Generate payload:
    ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" generate <role> ".claude/payloads/<role>-<context>.json"
+   node "$SKILL_DIR/scripts/payload-guard.cjs" generate <role> ".bug-hunter/payloads/<role>-<context>.json"
    ```
 4. Edit the payload JSON — fill in `skillDir`, `targetFiles`, and role-specific fields
 5. Validate:
    ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" validate <role> ".claude/payloads/<role>-<context>.json"
+   node "$SKILL_DIR/scripts/payload-guard.cjs" validate <role> ".bug-hunter/payloads/<role>-<context>.json"
    ```
 6. Fill the subagent-wrapper template variables:
    - `{ROLE_NAME}` = role name (see table below)
@@ -65,11 +65,11 @@ interactive_shell({ command: 'pi "<filled task prompt>"', mode: "dispatch" })
 
 | Role | Prompt File | Role Description | Output File | Phase-Specific Context |
 |------|-------------|-----------------|-------------|----------------------|
-| `recon` | `prompts/recon.md` | Reconnaissance agent — map the codebase and classify files by risk | `.claude/bug-hunter-recon.md` | Triage JSON path (if exists) |
-| `hunter` | `prompts/hunter.md` | Bug Hunter — find behavioral bugs in source code | `.claude/bug-hunter-findings.md` | `doc-lookup.md` + risk map + tech stack |
-| `skeptic` | `prompts/skeptic.md` | Skeptic — adversarial review to disprove false positives | `.claude/bug-hunter-skeptic.md` | Hunter findings (compact: bugId, severity, file, lines, claim, evidence, runtimeTrigger) + `doc-lookup.md` |
-| `referee` | `prompts/referee.md` | Referee — impartial final judge of all findings | `.claude/bug-hunter-referee.md` | Hunter findings + Skeptic challenges |
-| `fixer` | `prompts/fixer.md` | Surgical code fixer — implement minimal fixes for confirmed bugs | `.claude/bug-hunter-fix-report.md` | Confirmed bugs from Referee + tech stack + `doc-lookup.md` |
+| `recon` | `prompts/recon.md` | Reconnaissance agent — map the codebase and classify files by risk | `.bug-hunter/recon.md` | Triage JSON path (if exists) |
+| `hunter` | `prompts/hunter.md` | Bug Hunter — find behavioral bugs in source code | `.bug-hunter/findings.md` | `doc-lookup.md` + risk map + tech stack |
+| `skeptic` | `prompts/skeptic.md` | Skeptic — adversarial review to disprove false positives | `.bug-hunter/skeptic.md` | Hunter findings (compact: bugId, severity, file, lines, claim, evidence, runtimeTrigger) + `doc-lookup.md` |
+| `referee` | `prompts/referee.md` | Referee — impartial final judge of all findings | `.bug-hunter/referee.md` | Hunter findings + Skeptic challenges |
+| `fixer` | `prompts/fixer.md` | Surgical code fixer — implement minimal fixes for confirmed bugs | `.bug-hunter/fix-report.md` | Confirmed bugs from Referee + tech stack + `doc-lookup.md` |
 
 ---
 

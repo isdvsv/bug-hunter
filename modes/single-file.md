@@ -13,7 +13,7 @@ Pass the single file path as the file list. No risk map needed — the file is i
 
 For `local-sequential`: read the prompt file and scan the single file yourself.
 
-After completion, read `.claude/bug-hunter-findings.md`.
+After completion, read `.bug-hunter/findings.md`.
 
 If TOTAL FINDINGS: 0, go to Step 7 (Final Report) in SKILL.md.
 
@@ -25,7 +25,7 @@ Dispatch Skeptic using the standard dispatch pattern (see `_dispatch.md`, role=`
 
 Inject the Hunter's findings.
 
-After completion, read `.claude/bug-hunter-skeptic.md`.
+After completion, read `.bug-hunter/skeptic.md`.
 
 ---
 
@@ -35,4 +35,4 @@ Dispatch Referee using the standard dispatch pattern (see `_dispatch.md`, role=`
 
 Inject Hunter + Skeptic reports.
 
-After completion, read `.claude/bug-hunter-referee.md`. Go to Step 7 (Final Report) in SKILL.md.
+After completion, read `.bug-hunter/referee.md`. Go to Step 7 (Final Report) in SKILL.md.

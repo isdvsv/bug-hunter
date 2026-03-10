@@ -572,7 +572,7 @@ function prepareIndexAndScope({
   const codeIndexScript = path.join(skillDir, 'scripts', 'code-index.cjs');
   const deltaModeScript = path.join(skillDir, 'scripts', 'delta-mode.cjs');
   const scopeDir = path.dirname(statePath);
-  const indexPath = path.resolve(options['index-path'] || path.join(scopeDir, 'bug-hunter-index.json'));
+  const indexPath = path.resolve(options['index-path'] || path.join(scopeDir, 'index.json'));
 
   let activeFilesJsonPath = filesJsonPath;
   let deltaResult = null;
@@ -627,7 +627,7 @@ async function runPipeline(options) {
   const backend = preflightResult.backend.selected;
   const mode = options.mode || 'extended';
   const filesJsonPath = path.resolve(options['files-json']);
-  const statePath = path.resolve(options.state || '.claude/bug-hunter-state.json');
+  const statePath = path.resolve(options.state || '.bug-hunter/state.json');
   const chunkSize = toPositiveInt(options['chunk-size'], DEFAULT_CHUNK_SIZE);
   const timeoutMs = toPositiveInt(options['timeout-ms'], DEFAULT_TIMEOUT_MS);
   const maxRetries = toPositiveInt(options['max-retries'], DEFAULT_MAX_RETRIES);
@@ -638,12 +638,12 @@ async function runPipeline(options) {
   const canarySize = toPositiveInt(options['canary-size'], DEFAULT_CANARY_SIZE);
   const expansionCap = toPositiveInt(options['expansion-cap'], DEFAULT_EXPANSION_CAP);
   const expandOnLowConfidence = toBoolean(options['expand-on-low-confidence'], true);
-  const journalPath = path.resolve(options['journal-path'] || '.claude/bug-hunter-run.log');
+  const journalPath = path.resolve(options['journal-path'] || '.bug-hunter/run.log');
   const stateScript = path.join(skillDir, 'scripts', 'bug-hunter-state.cjs');
   const deltaModeScript = path.join(skillDir, 'scripts', 'delta-mode.cjs');
   const chunksDir = path.resolve(path.dirname(statePath), 'chunks');
-  const consistencyReportPath = path.resolve(options['consistency-report'] || path.join(path.dirname(statePath), 'bug-hunter-consistency.json'));
-  const fixPlanPath = path.resolve(options['fix-plan-path'] || path.join(path.dirname(statePath), 'bug-hunter-fix-plan.json'));
+  const consistencyReportPath = path.resolve(options['consistency-report'] || path.join(path.dirname(statePath), 'consistency.json'));
+  const fixPlanPath = path.resolve(options['fix-plan-path'] || path.join(path.dirname(statePath), 'fix-plan.json'));
   const factsPath = path.resolve(options['facts-path'] || path.join(path.dirname(statePath), 'bug-hunter-facts.json'));
   ensureDir(chunksDir);
 
@@ -825,7 +825,7 @@ async function main() {
     const filesJsonPath = path.resolve(options['files-json']);
     const mode = options.mode || 'extended';
     const chunkSize = toPositiveInt(options['chunk-size'], DEFAULT_CHUNK_SIZE);
-    const planPath = path.resolve(options['plan-path'] || '.claude/bug-hunter-plan.json');
+    const planPath = path.resolve(options['plan-path'] || '.bug-hunter/plan.json');
 
     const files = readJson(filesJsonPath);
     const totalFiles = files.length;

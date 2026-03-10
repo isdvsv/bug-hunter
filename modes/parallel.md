@@ -8,7 +8,7 @@ All phases are dispatched using the `AGENT_BACKEND` selected during SKILL prefli
 
 ## Triage Integration
 
-Before any phase, check for `.claude/bug-hunter-triage.json` (written by Step 1). If present:
+Before any phase, check for `.bug-hunter/triage.json` (written by Step 1). If present:
 - Use `triage.riskMap` as the risk map — skip Recon's file classification.
 - Use `triage.scanOrder` as the Hunter's file order.
 - Use `triage.fileBudget` as FILE_BUDGET.
@@ -24,7 +24,7 @@ Dispatch Recon using the standard dispatch pattern (see `_dispatch.md`, role=`re
 
 **If no triage data**, Recon does full file discovery and classification.
 
-After Recon completes, read `.claude/bug-hunter-recon.md` to extract the risk map, tech stack, and FILE_BUDGET.
+After Recon completes, read `.bug-hunter/recon.md` to extract the risk map, tech stack, and FILE_BUDGET.
 
 Report architecture summary to user.
 
@@ -38,16 +38,16 @@ Launch two scout Hunters in parallel on CRITICAL+HIGH files only:
 
 1. Generate payloads:
    ```
-   node "$SKILL_DIR/scripts/payload-guard.cjs" generate triage-hunter ".claude/payloads/scout-hunter-a.json"
-   node "$SKILL_DIR/scripts/payload-guard.cjs" generate triage-hunter ".claude/payloads/scout-hunter-b.json"
+   node "$SKILL_DIR/scripts/payload-guard.cjs" generate triage-hunter ".bug-hunter/payloads/scout-hunter-a.json"
+   node "$SKILL_DIR/scripts/payload-guard.cjs" generate triage-hunter ".bug-hunter/payloads/scout-hunter-b.json"
    ```
 2. Fill payloads: Scout-A = security lens, Scout-B = logic lens. Both scan the same CRITICAL+HIGH files.
 3. Validate both payloads.
 4. Dispatch in parallel:
    ```
    subagent({ tasks: [
-       { agent: "scout-hunter-security", task: "<security scout template>", output: ".claude/scout-a.md" },
-       { agent: "scout-hunter-logic", task: "<logic scout template>", output: ".claude/scout-b.md" }
+       { agent: "scout-hunter-security", task: "<security scout template>", output: ".bug-hunter/scout-a.md" },
+       { agent: "scout-hunter-logic", task: "<logic scout template>", output: ".bug-hunter/scout-b.md" }
    ]})
    ```
 5. Wait for both. Merge scout shortlists into hints for the deep Hunter.
@@ -70,7 +70,7 @@ Pass to the Hunter:
 - If scout hints exist (from Step 5), use them to prioritize certain code sections, but scan all files regardless.
 - `doc-lookup.md` contents as phase-specific context.
 
-After completion, read `.claude/bug-hunter-findings.md`.
+After completion, read `.bug-hunter/findings.md`.
 
 **Merge scout + deep findings:** If scout pass ran, compare scout findings with deep Hunter findings. Promote any scout-only findings (bugs the deep Hunter missed) into the findings list for Skeptic review.
 
@@ -104,7 +104,7 @@ Dispatch Referee using the standard dispatch pattern (see `_dispatch.md`, role=`
 
 Pass the merged Hunter findings + Skeptic challenges.
 
-After completion, read `.claude/bug-hunter-referee.md`.
+After completion, read `.bug-hunter/referee.md`.
 
 ---
 

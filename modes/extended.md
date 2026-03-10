@@ -8,7 +8,7 @@ All phases are dispatched using the `AGENT_BACKEND` selected during SKILL prefli
 
 ## Triage Integration
 
-Before any phase, check for `.claude/bug-hunter-triage.json` (written by Step 1). If present:
+Before any phase, check for `.bug-hunter/triage.json` (written by Step 1). If present:
 - Use `triage.riskMap` as the risk map — skip Recon's file classification.
 - Use `triage.scanOrder` as the chunk-building source (files already priority-ordered).
 - Use `triage.fileBudget` as FILE_BUDGET and chunk size cap.
@@ -25,7 +25,7 @@ Dispatch Recon using the standard dispatch pattern (see `_dispatch.md`, role=`re
 
 **If no triage data**, Recon does full file discovery and classification.
 
-After Recon completes, read `.claude/bug-hunter-recon.md` to extract the risk map and tech stack.
+After Recon completes, read `.bug-hunter/recon.md` to extract the risk map and tech stack.
 
 ---
 
@@ -42,7 +42,7 @@ Partition files from `triage.scanOrder` (or the Recon risk map if no triage) int
 ### 5b. Initialize state
 
 ```bash
-node "$SKILL_DIR/scripts/bug-hunter-state.cjs" init ".claude/bug-hunter-state.json" "extended" ".claude/source-files.json" 30
+node "$SKILL_DIR/scripts/bug-hunter-state.cjs" init ".bug-hunter/state.json" "extended" ".bug-hunter/source-files.json" 30
 ```
 
 ### 5c. Execute chunks sequentially
@@ -51,23 +51,23 @@ For each chunk:
 
 1. Get next chunk and mark in-progress:
    ```bash
-   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" next-chunk ".claude/bug-hunter-state.json"
-   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" mark-chunk ".claude/bug-hunter-state.json" "<chunk-id>" in_progress
+   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" next-chunk ".bug-hunter/state.json"
+   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" mark-chunk ".bug-hunter/state.json" "<chunk-id>" in_progress
    ```
 
 2. Dispatch Hunter on this chunk's files using the standard dispatch pattern (see `_dispatch.md`, role=`hunter`).
 
 3. Record findings and mark done:
    ```bash
-   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" record-findings ".claude/bug-hunter-state.json" ".claude/chunk-<id>-findings.json" "extended"
-   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" mark-chunk ".claude/bug-hunter-state.json" "<chunk-id>" done
+   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" record-findings ".bug-hunter/state.json" ".bug-hunter/chunk-<id>-findings.json" "extended"
+   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" mark-chunk ".bug-hunter/state.json" "<chunk-id>" done
    ```
 
 4. Continue to next chunk.
 
 ### 5d. Merge all findings
 
-After all chunks complete, merge findings from state into `.claude/bug-hunter-findings.md`.
+After all chunks complete, merge findings from state into `.bug-hunter/findings.md`.
 
 If TOTAL FINDINGS: 0, skip Skeptic and Referee. Go to Step 7 (Final Report) in SKILL.md.
 

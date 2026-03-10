@@ -7,7 +7,7 @@ All phases are dispatched using the `AGENT_BACKEND` selected during SKILL prefli
 
 ## Triage Integration
 
-Before any phase, check for `.claude/bug-hunter-triage.json` (written by Step 1). If present:
+Before any phase, check for `.bug-hunter/triage.json` (written by Step 1). If present:
 - Use `triage.riskMap` as the risk map — skip Recon's file classification.
 - Use `triage.scanOrder` as the Hunter's file order.
 - Recon becomes an enrichment pass: identify tech stack and trust boundary patterns only.
@@ -22,7 +22,7 @@ Dispatch Recon using the standard dispatch pattern (see `_dispatch.md`, role=`re
 
 **If no triage data**, Recon does full file discovery and classification.
 
-After Recon completes, read `.claude/bug-hunter-recon.md` to extract the risk map and tech stack.
+After Recon completes, read `.bug-hunter/recon.md` to extract the risk map and tech stack.
 
 Report architecture summary to user.
 
@@ -38,7 +38,7 @@ Pass to the Hunter:
 - Tech stack from Recon.
 - `doc-lookup.md` contents as phase-specific context.
 
-After completion, read `.claude/bug-hunter-findings.md`.
+After completion, read `.bug-hunter/findings.md`.
 
 If TOTAL FINDINGS: 0, skip Skeptic and Referee. Go to Step 7 (Final Report) in SKILL.md.
 
@@ -50,9 +50,9 @@ Compare the Hunter's FILES SCANNED list against the risk map.
 
 If any CRITICAL or HIGH files appear in FILES SKIPPED:
 
-**local-sequential:** Read the missed files yourself now and scan them for bugs. Append new findings to `.claude/bug-hunter-findings.md`.
+**local-sequential:** Read the missed files yourself now and scan them for bugs. Append new findings to `.bug-hunter/findings.md`.
 
-**subagent/teams:** Launch a second Hunter on ONLY the missed files using the standard dispatch pattern. Merge gap findings into `.claude/bug-hunter-findings.md`.
+**subagent/teams:** Launch a second Hunter on ONLY the missed files using the standard dispatch pattern. Merge gap findings into `.bug-hunter/findings.md`.
 
 ---
 
@@ -61,11 +61,11 @@ If any CRITICAL or HIGH files appear in FILES SKIPPED:
 Dispatch Skeptic using the standard dispatch pattern (see `_dispatch.md`, role=`skeptic`).
 
 Pass to the Skeptic:
-- Hunter findings from `.claude/bug-hunter-findings.md` (compact format: bugId, severity, file, lines, claim, evidence, runtimeTrigger).
+- Hunter findings from `.bug-hunter/findings.md` (compact format: bugId, severity, file, lines, claim, evidence, runtimeTrigger).
 - Tech stack from Recon.
 - `doc-lookup.md` contents as phase-specific context.
 
-After completion, read `.claude/bug-hunter-skeptic.md`.
+After completion, read `.bug-hunter/skeptic.md`.
 
 ---
 
@@ -74,13 +74,13 @@ After completion, read `.claude/bug-hunter-skeptic.md`.
 Dispatch Referee using the standard dispatch pattern (see `_dispatch.md`, role=`referee`).
 
 Pass to the Referee:
-- Hunter findings from `.claude/bug-hunter-findings.md`.
-- Skeptic challenges from `.claude/bug-hunter-skeptic.md`.
+- Hunter findings from `.bug-hunter/findings.md`.
+- Skeptic challenges from `.bug-hunter/skeptic.md`.
 
-After completion, read `.claude/bug-hunter-referee.md`.
+After completion, read `.bug-hunter/referee.md`.
 
 ---
 
 ## After Step 7
 
-Proceed to **Step 7** (Final Report) in SKILL.md. The Referee output in `.claude/bug-hunter-referee.md` provides the confirmed bugs table, dismissed findings, and coverage stats needed for the final report.
+Proceed to **Step 7** (Final Report) in SKILL.md. The Referee output in `.bug-hunter/referee.md` provides the confirmed bugs table, dismissed findings, and coverage stats needed for the final report.

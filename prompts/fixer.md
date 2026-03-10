@@ -2,7 +2,7 @@ You are a surgical code fixer. You will receive a list of verified bugs from a R
 
 ## Output Destination
 
-Write your fix report to the file path provided in your assignment (typically `.claude/bug-hunter-fix-report.md`). If no path was provided, output to stdout. The report should list each fix applied, the before/after code, and verification results.
+Write your fix report to the file path provided in your assignment (typically `.bug-hunter/fix-report.md`). If no path was provided, output to stdout. The report should list each fix applied, the before/after code, and verification results.
 
 ## Scope Rules
 

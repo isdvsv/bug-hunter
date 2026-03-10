@@ -24,7 +24,7 @@ Report:
 
 Acquire single-writer lock before edits:
 ```
-node "$SKILL_DIR/scripts/fix-lock.cjs" acquire ".claude/bug-hunter-fix.lock" 1800
+node "$SKILL_DIR/scripts/fix-lock.cjs" acquire ".bug-hunter/fix.lock" 1800
 ```
 If lock cannot be acquired, stop Phase 2 to avoid concurrent mutation.
 
@@ -79,7 +79,7 @@ For each cluster in order:
    - Recon tech stack context
 2. Validate Fixer payload before launch:
    ```
-   node "$SKILL_DIR/scripts/payload-guard.cjs" validate fixer ".claude/payloads/fixer-cluster-<id>.json"
+   node "$SKILL_DIR/scripts/payload-guard.cjs" validate fixer ".bug-hunter/payloads/fixer-cluster-<id>.json"
    ```
 3. Permission mode:
    - `APPROVE_MODE=true` -> `mode: "default"`
@@ -148,7 +148,7 @@ If stash was created:
 
 Always release single-writer lock at the end (success or failure path):
 ```
-node "$SKILL_DIR/scripts/fix-lock.cjs" release ".claude/bug-hunter-fix.lock"
+node "$SKILL_DIR/scripts/fix-lock.cjs" release ".bug-hunter/fix.lock"
 ```
 If an earlier step aborts Phase 2, run the same release command in best-effort cleanup before returning.
 
