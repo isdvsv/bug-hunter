@@ -1,7 +1,7 @@
 ---
 name: bug-hunter
 description: "Adversarial bug hunting with a sequential-first pipeline (Recon, Hunter, Skeptic, Referee) that can optionally use safe read-only parallel triage. Finds, verifies, and auto-fixes real bugs by default (with --scan-only opt-out) using checkpointed verification and resume state for large codebases. Use this skill whenever the user wants bug finding, security audits, regression checks, or code review focused on runtime behavior."
-argument-hint: "[path | -b <branch> [--base <base-branch>] | --staged | --scan-only | --fix | --autonomous | --loop | --approve | --deps | --threat-model | --dry-run]"
+argument-hint: "[path | -b <branch> [--base <base-branch>] | --staged | --scan-only | --fix | --autonomous | --no-loop | --approve | --deps | --threat-model | --dry-run]"
 disable-model-invocation: true
 ---
 
@@ -50,8 +50,9 @@ For large scans: process chunks sequentially with persistent state to avoid comp
 /bug-hunter --autonomous src/            # Alias for no-intervention auto-fix run
 /bug-hunter --fix -b feature-xyz        # Find + fix on branch diff
 /bug-hunter --fix --approve src/        # Find + fix, but ask before each fix
-/bug-hunter --loop src/                  # Ralph-loop mode: audit until 100% coverage
-/bug-hunter --loop --fix src/            # Loop mode: find + fix until clean
+/bug-hunter src/                         # Loops by default: audit until 100% coverage
+/bug-hunter --no-loop src/               # Single-pass only, no iterating
+/bug-hunter --no-loop --scan-only src/   # Single-pass scan, no fixes, no loop
 /bug-hunter --deps src/                 # Include dependency CVE scan
 /bug-hunter --threat-model src/         # Generate/use STRIDE threat model
 /bug-hunter --deps --threat-model src/  # Full security audit
@@ -64,7 +65,7 @@ The raw arguments are: $ARGUMENTS
 
 **Parse the arguments as follows:**
 
-0. If arguments contain `--loop`: strip it from the arguments and set `LOOP_MODE=true`. The remaining arguments are parsed normally below.
+0. Default `LOOP_MODE=true`. If arguments contain `--no-loop`: strip it from the arguments and set `LOOP_MODE=false`. The `--loop` flag is accepted for backwards compatibility but is a no-op (loop is already the default).
 
 0b. Default `FIX_MODE=true`.
 0c. If arguments contain `--scan-only`: strip it from the arguments and set `FIX_MODE=false`.
@@ -134,7 +135,7 @@ If triage was not run (e.g., Recon was called directly without the orchestrator)
 - Persist chunk progress in `.bug-hunter/state.json` so restarts do not re-scan done chunks.
 - Test files (CONTEXT-ONLY) are included only when needed for intent.
 
-If the triage output shows `needsLoop: true` and `--loop` was not specified, warn the user: "This codebase has [N] source files (FILE_BUDGET: [B]). For thorough coverage, use `--loop` mode. Large codebases use domain-scoped auditing — see `modes/large-codebase.md`."
+If the triage output shows `needsLoop: true` and `LOOP_MODE=false` (user passed `--no-loop`), warn the user: "This codebase has [N] source files (FILE_BUDGET: [B]). Single-pass mode will only cover a subset. Loop mode is recommended for thorough coverage (remove `--no-loop` to enable). Large codebases use domain-scoped auditing — see `modes/large-codebase.md`."
 
 ## Execution Steps
 
@@ -253,7 +254,7 @@ Then read `.bug-hunter/triage.json`. It contains:
 - `domainFileLists`: per-domain file lists (only present for large-codebase strategy)
 - `scanOrder`: priority-ordered list for Hunters
 - `tokenEstimate`: cost estimates for each pipeline phase
-- `needsLoop`: whether `--loop` is required
+- `needsLoop`: whether loop mode is needed for full coverage (loop is on by default; this indicates `--no-loop` would cause incomplete coverage)
 
 **Set these variables from the triage output:**
 ```
@@ -271,10 +272,10 @@ Domains: [N] CRITICAL, [N] HIGH, [N] MEDIUM, [N] LOW
 Token estimate: ~[N] tokens for full pipeline
 ```
 
-**If triage says `needsLoop: true` but `--loop` was NOT specified**, warn:
+**If triage says `needsLoop: true` and `LOOP_MODE=false`** (user passed `--no-loop`), warn:
 ```
 ⚠️ This codebase has [N] source files (FILE_BUDGET: [B]).
-For thorough coverage, use `--loop` mode. Large codebases use domain-scoped auditing.
+Single-pass mode will only cover a subset. Remove `--no-loop` to enable iterative coverage.
 Proceeding with partial scan — CRITICAL and HIGH domains only.
 ```
 
@@ -477,20 +478,20 @@ In a collapsed `<details>` section (for transparency).
 
 If the coverage assessment shows ANY CRITICAL or HIGH files were not scanned, the pipeline is NOT complete:
 
-1. If `--loop` was specified: the ralph-loop will automatically continue to the next iteration covering missed files. Call `ralph_done` to proceed to the next iteration. Do NOT output `<promise>COMPLETE</promise>` until all CRITICAL/HIGH files show DONE.
+1. If `LOOP_MODE=true` (default): the ralph-loop will automatically continue to the next iteration covering missed files. Call `ralph_done` to proceed to the next iteration. Do NOT output `<promise>COMPLETE</promise>` until all CRITICAL/HIGH files show DONE.
 
-2. If `--loop` was NOT specified AND missed files exist:
+2. If `LOOP_MODE=false` (`--no-loop` was specified) AND missed files exist:
    - If total files ≤ FILE_BUDGET × 3: Output the report with a WARNING:
      ```
      ⚠️ PARTIAL COVERAGE: [N] CRITICAL/HIGH files were not scanned.
-     Run `/bug-hunter --loop [path]` for complete coverage.
+     Run `/bug-hunter [path]` for complete coverage (loop is on by default).
      Unscanned files: [list them]
      ```
    - If total files > FILE_BUDGET × 3: The report MUST include:
      ```
      🚨 LARGE CODEBASE: [N] source files (FILE_BUDGET: [B]).
      Single-pass audit covered [X]% of CRITICAL/HIGH files.
-     Use `/bug-hunter --loop [path]` for full coverage.
+     Use `/bug-hunter [path]` for full coverage (loop is on by default).
      ```
 
 3. Do NOT claim "audit complete" or "full coverage achieved" unless ALL CRITICAL and HIGH files have status DONE. A partial audit is still valuable — report what you found honestly.

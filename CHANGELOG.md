@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.3.0 — 2026-03-10
+
+### Loop mode is now on by default
+
+- `LOOP_MODE=true` is the new default — every `/bug-hunter` invocation iterates until full CRITICAL/HIGH coverage
+- Added `--no-loop` flag to opt out and get single-pass behavior
+- `--loop` flag still accepted for backwards compatibility (no-op)
+- Updated triage warnings, coverage enforcement, and all documentation to reflect the new default
+- `/bug-hunter src/` now finds bugs, fixes them, AND loops until full coverage — zero flags needed
+
 ## 2.2.1 — 2026-03-10
 
 ### Fix: `--loop` mode now actually loops

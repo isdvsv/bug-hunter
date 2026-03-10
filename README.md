@@ -194,7 +194,7 @@ git clone https://github.com/codexstar69/bug-hunter.git ~/.agents/skills/bug-hun
 /bug-hunter --deps --threat-model src/
 
 # Iterative audit for large codebases — runs until 100% critical coverage
-/bug-hunter --loop --deps --threat-model src/
+/bug-hunter --deps --threat-model src/
 ```
 
 ---
@@ -317,9 +317,9 @@ Bug Hunter automatically selects the optimal scanning strategy based on your cod
 | **11–60 files** | Parallel | Hybrid scanning with optional dual-lens verification |
 | **60–120 files** | Extended | Sequential chunked scanning with progress checkpoints |
 | **120–180 files** | Scaled | State-driven chunks with resume capability |
-| **180+ files** | Large-codebase | Domain-scoped pipelines + boundary audits — use `--loop` |
+| **180+ files** | Large-codebase | Domain-scoped pipelines + boundary audits (loop mode, on by default) |
 
-For large codebases, `--loop` mode runs iteratively until every critical and high-risk file has been audited, with persistent state enabling stop-and-resume workflows.
+Loop mode is **on by default** — the pipeline runs iteratively until every critical and high-risk file has been audited, with persistent state enabling stop-and-resume workflows. Use `--no-loop` for a single-pass scan.
 
 ---
 
@@ -597,12 +597,13 @@ The pipeline adapts to whatever it finds. Triage classifies files by extension a
 | `--fix` | Find and auto-fix bugs (default behavior) |
 | `--approve` | Interactive mode — ask before each fix |
 | `--autonomous` | Full auto-fix with zero intervention |
-| `--loop` | Iterative mode for large codebases — runs until 100% critical file coverage |
+| `--loop` | Iterative mode — runs until 100% critical file coverage **(on by default)** |
+| `--no-loop` | Disable loop mode — single-pass scan only |
 | `--deps` | Include dependency CVE scanning with reachability analysis |
 | `--threat-model` | Generate or use STRIDE threat model for targeted security analysis |
 | `--dry-run` | Preview planned fixes without editing files — outputs diff previews and `fix-report.json` |
 
-All flags compose: `/bug-hunter --deps --threat-model --loop --fix src/`
+All flags compose: `/bug-hunter --deps --threat-model --fix src/`
 
 ---
 
