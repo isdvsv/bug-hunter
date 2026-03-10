@@ -1,196 +1,113 @@
 # Parallel Mode (11–FILE_BUDGET files) — sequential-first hybrid
 
-Use this mode when files fit in one deep pass but the target is too large for "small mode".
-Keep one writer/decision-maker flow. Parallel work is read-only and optional.
-
-All phases use the `AGENT_BACKEND` selected during SKILL preflight.
+This mode handles medium-sized scan targets. The deep Hunter scans all files sequentially.
+An optional read-only dual-lens **scout pass** can run in parallel to provide hints.
+All phases are dispatched using the `AGENT_BACKEND` selected during SKILL preflight.
 
 ---
 
-## Step 4p: Run Recon
+## Triage Integration
 
-**If `AGENT_BACKEND = "local-sequential"`:**
+Before any phase, check for `.claude/bug-hunter-triage.json` (written by Step 1). If present:
+- Use `triage.riskMap` as the risk map — skip Recon's file classification.
+- Use `triage.scanOrder` as the Hunter's file order.
+- Use `triage.fileBudget` as FILE_BUDGET.
+- Recon becomes an enrichment pass: identify tech stack and trust boundary patterns only.
 
-1. Read `SKILL_DIR/prompts/recon.md`.
-2. Execute Recon yourself (see `modes/local-sequential.md` Phase A for detailed steps).
-3. Write output to `.claude/bug-hunter-recon.md`.
+---
 
-**If `AGENT_BACKEND = "subagent"` or `"teams"`:**
+## Step 4: Run Recon
 
-1. Read `SKILL_DIR/prompts/recon.md` and `SKILL_DIR/templates/subagent-wrapper.md`.
-2. Generate payload:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" generate recon ".claude/payloads/recon-parallel.json"
-   ```
-3. Fill payload: `skillDir`, `targetFiles` (all source files).
-4. Validate:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" validate recon ".claude/payloads/recon-parallel.json"
-   ```
-5. Fill subagent-wrapper template with recon prompt content.
-6. Dispatch: `subagent({ agent: "recon-agent", task: "<filled template>", output: ".claude/bug-hunter-recon.md" })`
-7. Wait for completion.
+Dispatch Recon using the standard dispatch pattern (see `_dispatch.md`, role=`recon`).
 
-Capture from Recon output:
-- Risk map (CRITICAL/HIGH/MEDIUM scan order)
-- Service boundaries
-- Tech stack
-- FILE_BUDGET
+**If triage data exists**, tell Recon to use the triage risk map and only identify tech stack + patterns. Pass the triage JSON path as phase-specific context.
+
+**If no triage data**, Recon does full file discovery and classification.
+
+After Recon completes, read `.claude/bug-hunter-recon.md` to extract the risk map, tech stack, and FILE_BUDGET.
 
 Report architecture summary to user.
 
 ---
 
-## Step 5p: Optional read-only dual-lens triage (safe parallel)
+## Step 5: Optional read-only dual-lens scout pass (safe parallel)
 
-> This step is OPTIONAL. Only run when `AGENT_BACKEND` supports parallel dispatch (subagent or teams) AND `DOC_LOOKUP_AVAILABLE=true`. For local-sequential, SKIP to Step 5p-deep.
+**This step is optional** — skip it if the codebase is straightforward or if `AGENT_BACKEND = "local-sequential"`.
 
-Launch two triage Hunters in parallel on CRITICAL+HIGH files only:
+Launch two scout Hunters in parallel on CRITICAL+HIGH files only:
 
-1. Generate payloads for each:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" generate triage-hunter ".claude/payloads/triage-hunter-a.json"
-   node "$SKILL_DIR/scripts/payload-guard.cjs" generate triage-hunter ".claude/payloads/triage-hunter-b.json"
+1. Generate payloads:
    ```
-2. Fill payloads: Hunter-A = security triage lens, Hunter-B = logic triage lens. Both scan the same CRITICAL+HIGH files.
+   node "$SKILL_DIR/scripts/payload-guard.cjs" generate triage-hunter ".claude/payloads/scout-hunter-a.json"
+   node "$SKILL_DIR/scripts/payload-guard.cjs" generate triage-hunter ".claude/payloads/scout-hunter-b.json"
+   ```
+2. Fill payloads: Scout-A = security lens, Scout-B = logic lens. Both scan the same CRITICAL+HIGH files.
 3. Validate both payloads.
-4. Dispatch in parallel (if backend supports it):
+4. Dispatch in parallel:
    ```
-   subagent({
-     tasks: [
-       { agent: "triage-hunter-security", task: "<security triage template>", output: ".claude/triage-a.md" },
-       { agent: "triage-hunter-logic", task: "<logic triage template>", output: ".claude/triage-b.md" }
-     ]
-   })
+   subagent({ tasks: [
+       { agent: "scout-hunter-security", task: "<security scout template>", output: ".claude/scout-a.md" },
+       { agent: "scout-hunter-logic", task: "<logic scout template>", output: ".claude/scout-b.md" }
+   ]})
    ```
-5. Wait for both. Merge triage shortlists into hints for the deep Hunter.
+5. Wait for both. Merge scout shortlists into hints for the deep Hunter.
 
-**Rules:**
-- Triage is read-only and fast. It produces a shortlist of suspicious areas, NOT final bugs.
-- If either triage dispatch fails, disable triage and continue to Step 5p-deep without hints.
+**Scout pass rules:**
+- Scouts are READ-ONLY — they never modify files or state.
+- If either scout dispatch fails, disable scout pass and continue to Step 5-deep without hints.
+- Scout findings alone are NOT the final result — they only inform the deep scan.
 
 ---
 
-## Step 5p-deep: Run one deep Hunter (authoritative)
+## Step 5-deep: Run Deep Hunter
 
-This is the main Hunter pass — the source of truth for findings.
+Dispatch Hunter using the standard dispatch pattern (see `_dispatch.md`, role=`hunter`).
 
-**If `AGENT_BACKEND = "local-sequential"`:**
+Pass to the Hunter:
+- File list in risk-map order. If triage exists, use `triage.scanOrder`.
+- Risk map from Recon (or triage).
+- Tech stack from Recon.
+- If scout hints exist (from Step 5), use them to prioritize certain code sections, but scan all files regardless.
+- `doc-lookup.md` contents as phase-specific context.
 
-1. Read `SKILL_DIR/prompts/hunter.md` and `SKILL_DIR/prompts/doc-lookup.md`.
-2. Execute Hunter yourself on ALL files in risk-map order (CRITICAL → HIGH → MEDIUM).
-3. If triage hints exist (from Step 5p), use them to prioritize certain code sections, but scan all files regardless.
-4. Write output to `.claude/bug-hunter-findings.md`.
+After completion, read `.claude/bug-hunter-findings.md`.
 
-**If `AGENT_BACKEND = "subagent"` or `"teams"`:**
+**Merge scout + deep findings:** If scout pass ran, compare scout findings with deep Hunter findings. Promote any scout-only findings (bugs the deep Hunter missed) into the findings list for Skeptic review.
 
-1. Read `SKILL_DIR/prompts/hunter.md` and `SKILL_DIR/prompts/doc-lookup.md`.
-2. Read `SKILL_DIR/templates/subagent-wrapper.md`.
-3. Generate and fill payload:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" generate hunter ".claude/payloads/hunter-deep.json"
-   ```
-4. Fill: `skillDir`, `targetFiles` (full risk map order), `riskMap`, `techStack`.
-5. Validate:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" validate hunter ".claude/payloads/hunter-deep.json"
-   ```
-6. Fill template. In `{PHASE_SPECIFIC_CONTEXT}`, include:
-   - Doc-lookup instructions
-   - Triage hints (if available): "Triage flagged these areas for closer inspection: ..."
-   - "This deep scan output is the SOURCE OF TRUTH. Triage hints are supplementary only."
-7. Dispatch: `subagent({ agent: "hunter-deep", task: "<filled template>", output: ".claude/bug-hunter-findings.md" })`
-8. Wait for completion.
+If TOTAL FINDINGS: 0, skip Skeptic and Referee. Go to Step 7 (Final Report) in SKILL.md.
 
 ---
 
-## Step 5p-verify: Gap-fill check
+## Step 5-verify: Gap-fill check
 
-Compare the deep Hunter's `FILES SCANNED` list against the risk map.
-
-If any CRITICAL or HIGH files appear in FILES SKIPPED:
-
-**local-sequential:** Read the missed files yourself now. Scan for bugs. Append to `.claude/bug-hunter-findings.md`.
-
-**subagent:** Launch one gap-fill Hunter on ONLY the missed files:
-1. Generate hunter payload with only missed files in `targetFiles`.
-2. Validate. Dispatch with `output: ".claude/bug-hunter-gap-findings.md"`.
-3. Merge gap findings into `.claude/bug-hunter-findings.md`. Renumber BUG-IDs sequentially.
-
-Report coverage status to user.
-
-If merged TOTAL FINDINGS: 0, skip Skeptic/Referee. Go to Step 7 (Final Report) in SKILL.md.
+Same as small mode: compare FILES SCANNED vs risk map, re-scan any missed CRITICAL/HIGH files.
 
 ---
 
-## Step 6p: Skeptic pass (sequential by cluster)
+## Step 6: Run Skeptic
 
-Group bugs by directory, then decide Skeptic count:
-- If total bugs ≤ 5: run ONE Skeptic on all findings.
-- If total bugs > 5: split into two cluster sets. Run Skeptic-A on set 1, THEN Skeptic-B on set 2 (sequentially, NOT in parallel).
+Dispatch Skeptic using the standard dispatch pattern (see `_dispatch.md`, role=`skeptic`).
 
-**If `AGENT_BACKEND = "local-sequential"`:**
+For parallel mode, you may split into two Skeptics by directory if findings span multiple services:
+- Skeptic-A: bugs in service/directory A
+- Skeptic-B: bugs in service/directory B
 
-1. Read `SKILL_DIR/prompts/skeptic.md` and `SKILL_DIR/prompts/doc-lookup.md`.
-2. **Switch mindset**: you are the adversarial Skeptic.
-3. Read `.claude/bug-hunter-findings.md`.
-4. For each finding:
-   - Re-read the actual code with the Read tool (MANDATORY).
-   - Check for framework protections the Hunter may have missed.
-   - Apply risk calculation: only disprove when confidence > 67%.
-5. Write output to `.claude/bug-hunter-skeptic.md`.
+Pass to each Skeptic only the bugs in their assigned scope. After completion, merge results.
 
-**If `AGENT_BACKEND = "subagent"` or `"teams"`:**
-
-For each Skeptic (one or two depending on bug count):
-1. Read prompts + template.
-2. Generate and fill payload:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" generate skeptic ".claude/payloads/skeptic-<id>.json"
-   ```
-3. Fill `bugs` array with only the bugs assigned to this Skeptic. Fill `techStack`.
-4. Validate:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" validate skeptic ".claude/payloads/skeptic-<id>.json"
-   ```
-5. Dispatch. Wait for completion.
-
-Merge Skeptic output while preserving BUG-IDs. Write merged result to `.claude/bug-hunter-skeptic.md`.
+If only one service/directory: use a single Skeptic.
 
 ---
 
-## Step 7p: Run Referee
+## Step 7: Run Referee
 
-**If `AGENT_BACKEND = "local-sequential"`:**
+Dispatch Referee using the standard dispatch pattern (see `_dispatch.md`, role=`referee`).
 
-1. Read `SKILL_DIR/prompts/referee.md`.
-2. **Switch mindset**: impartial Referee.
-3. Read `.claude/bug-hunter-findings.md` and `.claude/bug-hunter-skeptic.md`.
-4. For each finding (Tier 1: re-read code a THIRD time):
-   - Make REAL BUG / NOT A BUG verdict.
-   - Calibrate severity and assign confidence %.
-5. Write output to `.claude/bug-hunter-referee.md`.
+Pass the merged Hunter findings + Skeptic challenges.
 
-**If `AGENT_BACKEND = "subagent"` or `"teams"`:**
-
-1. Read `SKILL_DIR/prompts/referee.md` and `SKILL_DIR/templates/subagent-wrapper.md`.
-2. Generate and fill payload:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" generate referee ".claude/payloads/referee-parallel.json"
-   ```
-3. Fill: `findings` from merged Hunter output, `skepticResults` from merged Skeptic output.
-4. Validate:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" validate referee ".claude/payloads/referee-parallel.json"
-   ```
-5. Fill template with both Hunter findings AND Skeptic challenges in `{PHASE_SPECIFIC_CONTEXT}`.
-6. Dispatch: `subagent({ agent: "referee-agent", task: "<filled template>", output: ".claude/bug-hunter-referee.md" })`
-7. Wait for completion.
-
-**Fallback:** If Referee dispatch fails or times out, fall back to Skeptic-accepted bugs. Mark the result as `REFEREE_UNAVAILABLE` in the final report and note which bugs were only Skeptic-reviewed.
+After completion, read `.claude/bug-hunter-referee.md`.
 
 ---
 
-## After Step 7p
+## After Step 7
 
-Proceed to **Step 7** (Final Report) in SKILL.md. Use the Referee output from `.claude/bug-hunter-referee.md` for confirmed bugs.
+Proceed to **Step 7** (Final Report) in SKILL.md.

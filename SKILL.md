@@ -87,24 +87,19 @@ The raw arguments are: $ARGUMENTS
 **After resolving the file list (for modes 1 and 2), filter out non-source files:**
 
 Remove any files matching these patterns — they are not scannable source code:
-- `*.md`, `*.txt`, `*.rst`, `*.adoc`
-- `*.json`, `*.yaml`, `*.yml`, `*.toml`, `*.ini`, `*.cfg`
-- `*.lock`, `*.sum`
-- `*.min.js`, `*.min.css`, `*.map`
-- `*.svg`, `*.png`, `*.jpg`, `*.gif`, `*.ico`, `*.woff*`, `*.ttf`, `*.eot`
-- `.env*`, `.gitignore`, `.editorconfig`, `.prettierrc*`, `.eslintrc*`, `tsconfig.json`
-- `jest.config.*`, `vitest.config.*`, `webpack.config.*`, `vite.config.*`, `next.config.*`, `tailwind.config.*`
-- `LICENSE`, `CHANGELOG*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT*`
-- `Makefile`, `Dockerfile`, `docker-compose*`, `Procfile`
-- Files inside `node_modules/`, `vendor/`, `dist/`, `build/`, `.next/`, `__pycache__/`, `.venv/`
+- Docs/text: `*.md`, `*.txt`, `*.rst`, `*.adoc`
+- Config: `*.json`, `*.yaml`, `*.yml`, `*.toml`, `*.ini`, `*.cfg`, `.env*`, `.gitignore`, `.editorconfig`, `.prettierrc*`, `.eslintrc*`, `tsconfig.json`, `jest.config.*`, `vitest.config.*`, `webpack.config.*`, `vite.config.*`, `next.config.*`, `tailwind.config.*`
+- Lockfiles: `*.lock`, `*.sum`
+- Minified/maps: `*.min.js`, `*.min.css`, `*.map`
+- Assets: `*.svg`, `*.png`, `*.jpg`, `*.gif`, `*.ico`, `*.woff*`, `*.ttf`, `*.eot`
+- Project meta: `LICENSE`, `CHANGELOG*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT*`, `Makefile`, `Dockerfile`, `docker-compose*`, `Procfile`
+- Vendor dirs: `node_modules/`, `vendor/`, `dist/`, `build/`, `.next/`, `__pycache__/`, `.venv/`
 
 If after filtering there are zero source files left, tell the user: "No scannable source files found — only config/docs/assets were changed." and stop.
 
 ## Context Budget
 
-Each subagent has a limited context window. The number of files an agent can reliably process depends on file sizes.
-
-**FILE_BUDGET is computed by the triage script (Step 0.4), not by Recon.** The triage script samples 30 files from the codebase, computes average line count, and derives:
+**FILE_BUDGET is computed by the triage script (Step 1), not by Recon.** The triage script samples 30 files from the codebase, computes average line count, and derives:
 ```
 avg_tokens_per_file = average_lines_per_file * 4
 FILE_BUDGET = floor(150000 / avg_tokens_per_file)   # capped at 60, floored at 10
@@ -149,54 +144,7 @@ Before doing anything else, verify the environment:
 
 3. **Node.js available**: Run `node --version` via Bash. If it fails, stop and tell the user: "Node.js is required for doc verification. Please install Node.js to continue."
 
-4. **Run triage (zero-token strategy decision)**:
-
-   Run the triage script BEFORE any LLM phase. This is a pure Node.js filesystem scan — no tokens consumed, runs in <2 seconds even on 2,000+ file repos.
-
-   ```bash
-   node "$SKILL_DIR/scripts/triage.cjs" scan "<TARGET_PATH>" --output .claude/bug-hunter-triage.json
-   ```
-
-   Then read `.claude/bug-hunter-triage.json`. It contains:
-   - `strategy`: which mode to use ("single-file", "small", "parallel", "extended", "scaled", "large-codebase")
-   - `modeFile`: which mode file to read
-   - `fileBudget`: computed from actual file sizes (sampled), not a guess
-   - `totalFiles` / `scannableFiles`: exact count
-   - `domains`: directory-level risk classification (CRITICAL/HIGH/MEDIUM/LOW/CONTEXT-ONLY)
-   - `riskMap`: file-level classification (only present when ≤200 files)
-   - `domainFileLists`: per-domain file lists (only present for large-codebase strategy)
-   - `scanOrder`: priority-ordered list for Hunters
-   - `tokenEstimate`: cost estimates for each pipeline phase
-   - `needsLoop`: whether `--loop` is required
-
-   **Set these variables from the triage output:**
-   ```
-   STRATEGY = triage.strategy
-   FILE_BUDGET = triage.fileBudget
-   TOTAL_FILES = triage.totalFiles
-   SCANNABLE_FILES = triage.scannableFiles
-   NEEDS_LOOP = triage.needsLoop
-   ```
-
-   **Report to the user:**
-   ```
-   Triage: [TOTAL_FILES] source files | FILE_BUDGET: [FILE_BUDGET] | Strategy: [STRATEGY]
-   Domains: [N] CRITICAL, [N] HIGH, [N] MEDIUM, [N] LOW
-   Token estimate: ~[N] tokens for full pipeline
-   ```
-
-   **If triage says `needsLoop: true` but `--loop` was NOT specified**, warn:
-   ```
-   ⚠️ This codebase has [N] source files (FILE_BUDGET: [B]).
-   For thorough coverage, use `--loop` mode. Large codebases use domain-scoped auditing.
-   Proceeding with partial scan — CRITICAL and HIGH domains only.
-   ```
-
-   **Triage replaces the need for Recon to compute FILE_BUDGET.** Recon (Step 4) still runs
-   to do pattern-based classification within domains, but it no longer needs to count files or
-   compute the context budget — triage already did that, for free.
-
-5. **Context7 availability (optional, non-blocking)**: Run a quick smoke test:
+4. **Context7 availability (optional, non-blocking)**: Run a quick smoke test:
    ```
    node "$SKILL_DIR/scripts/context7-api.cjs" search "express" "middleware"
    ```
@@ -204,13 +152,14 @@ Before doing anything else, verify the environment:
    - If it fails, warn the user and set `DOC_LOOKUP_AVAILABLE=false`.
    - Missing `CONTEXT7_API_KEY` must NOT block execution; anonymous lookups may still work.
 
-6. **Verify helper scripts exist**:
+5. **Verify helper scripts exist**:
    ```
-   ls "$SKILL_DIR/scripts/run-bug-hunter.cjs" "$SKILL_DIR/scripts/bug-hunter-state.cjs" "$SKILL_DIR/scripts/code-index.cjs" "$SKILL_DIR/scripts/delta-mode.cjs" "$SKILL_DIR/scripts/payload-guard.cjs" "$SKILL_DIR/scripts/fix-lock.cjs" "$SKILL_DIR/scripts/triage.cjs"
+   ls "$SKILL_DIR/scripts/run-bug-hunter.cjs" "$SKILL_DIR/scripts/bug-hunter-state.cjs" "$SKILL_DIR/scripts/delta-mode.cjs" "$SKILL_DIR/scripts/payload-guard.cjs" "$SKILL_DIR/scripts/fix-lock.cjs" "$SKILL_DIR/scripts/triage.cjs"
    ```
-   If missing, stop and tell the user to update/reinstall the skill.
+   If any are missing, stop and tell the user to update/reinstall the skill.
+   Note: `code-index.cjs` is optional — enables cross-domain dependency analysis for boundary audits in large-codebase mode, but the pipeline works fully without it.
 
-7. **Select orchestration backend (cross-CLI portability)**:
+6. **Select orchestration backend (cross-CLI portability)**:
 
    Detect which dispatch tools are available in your runtime. Use the FIRST that works:
 
@@ -264,7 +213,7 @@ Before doing anything else, verify the environment:
    - If a remote backend launch fails, fall back to the next option.
    - If all remote backends fail, use `local-sequential` and continue.
 
-### Step 1: Parse arguments and resolve target
+### Step 1: Parse arguments, resolve target, and run triage
 
 Follow the rules in the **Target** section above. If in branch diff or staged mode, run the appropriate git command now, collect the file list, and apply the filter.
 
@@ -272,6 +221,51 @@ Report to the user:
 - Mode (full project / directory / file / branch diff / staged)
 - Number of source files to scan (after filtering)
 - Number of files filtered out
+
+**Then run triage (zero-token strategy decision):**
+
+Run the triage script AFTER resolving the target. This is a pure Node.js filesystem scan — no tokens consumed, runs in <2 seconds even on 2,000+ file repos.
+
+```bash
+node "$SKILL_DIR/scripts/triage.cjs" scan "<TARGET_PATH>" --output .claude/bug-hunter-triage.json
+```
+
+Then read `.claude/bug-hunter-triage.json`. It contains:
+- `strategy`: which mode to use ("single-file", "small", "parallel", "extended", "scaled", "large-codebase")
+- `modeFile`: which mode file to read
+- `fileBudget`: computed from actual file sizes (sampled), not a guess
+- `totalFiles` / `scannableFiles`: exact count
+- `domains`: directory-level risk classification (CRITICAL/HIGH/MEDIUM/LOW/CONTEXT-ONLY)
+- `riskMap`: file-level classification (only present when ≤200 files)
+- `domainFileLists`: per-domain file lists (only present for large-codebase strategy)
+- `scanOrder`: priority-ordered list for Hunters
+- `tokenEstimate`: cost estimates for each pipeline phase
+- `needsLoop`: whether `--loop` is required
+
+**Set these variables from the triage output:**
+```
+STRATEGY = triage.strategy
+FILE_BUDGET = triage.fileBudget
+TOTAL_FILES = triage.totalFiles
+SCANNABLE_FILES = triage.scannableFiles
+NEEDS_LOOP = triage.needsLoop
+```
+
+**Report to the user:**
+```
+Triage: [TOTAL_FILES] source files | FILE_BUDGET: [FILE_BUDGET] | Strategy: [STRATEGY]
+Domains: [N] CRITICAL, [N] HIGH, [N] MEDIUM, [N] LOW
+Token estimate: ~[N] tokens for full pipeline
+```
+
+**If triage says `needsLoop: true` but `--loop` was NOT specified**, warn:
+```
+⚠️ This codebase has [N] source files (FILE_BUDGET: [B]).
+For thorough coverage, use `--loop` mode. Large codebases use domain-scoped auditing.
+Proceeding with partial scan — CRITICAL and HIGH domains only.
+```
+
+**Triage replaces Recon's FILE_BUDGET computation.** Recon still runs for tech stack identification and pattern-based analysis, but it no longer needs to count files or compute the context budget — triage already did that, for free.
 
 ### Step 2: Read prompt files on demand (context efficiency)
 
@@ -350,7 +344,7 @@ After reading each prompt, extract the key instructions and pass the content to 
 
 ### Step 3: Determine execution mode
 
-**Use the triage output from Step 0.4** — the strategy and FILE_BUDGET are already computed. Do NOT wait for Recon to determine the mode.
+**Use the triage output from Step 1** — the strategy and FILE_BUDGET are already computed. Do NOT wait for Recon to determine the mode.
 
 Read the corresponding mode file using `STRATEGY` from the triage JSON:
 - `single-file`: `SKILL_DIR/modes/single-file.md`
@@ -368,7 +362,9 @@ If LOOP_MODE=true, also read:
 
 Report the chosen mode to the user.
 
-**Then follow the steps in the loaded mode file.** Each mode file contains the specific steps for running Hunters, Skeptics, and Referee for that mode. Execute them in order.
+**Then follow the steps in the loaded mode file.** Each mode file contains the specific steps for running Recon, Hunters, Skeptics, and Referee for that mode. Each mode also references `modes/_dispatch.md` for backend-specific dispatch patterns. Execute them in order.
+
+**Branch-diff and staged optimization:** For `-b` and `--staged` modes, if the file count ≤ FILE_BUDGET, always use `small` or `parallel` mode regardless of total codebase size. The triage script already handles this since it only scans the provided target files.
 
 For `extended` and `scaled` modes, initialize state before chunk execution:
 ```
@@ -379,29 +375,17 @@ Then apply hash-based skip filtering before each chunk:
 node "$SKILL_DIR/scripts/bug-hunter-state.cjs" hash-filter ".claude/bug-hunter-state.json" "<chunk-files-json-path>"
 ```
 
-For full autonomous chunk orchestration (timeouts + retries + journal), prefer:
+For full autonomous chunk orchestration with timeouts, retries, and journaling, extended/scaled modes can use:
 ```
-node "$SKILL_DIR/scripts/run-bug-hunter.cjs" run --skill-dir "$SKILL_DIR" --files-json "<files-json-path>" --changed-files-json "<changed-files-json-path>" --mode "<mode>" --use-index true --delta-mode true --delta-hops 2 --expand-on-low-confidence true --canary-size 3 --timeout-ms 120000 --max-retries 1 --backoff-ms 1000
+node "$SKILL_DIR/scripts/run-bug-hunter.cjs" run --skill-dir "$SKILL_DIR" --files-json "<files-json-path>" --mode "<mode>"
 ```
-This writes:
-- Run journal: `.claude/bug-hunter-run.log`
-- Persistent index: `.claude/bug-hunter-index.json`
-- Chunk facts: `.claude/bug-hunter-facts.json`
-- Consistency report: `.claude/bug-hunter-consistency.json`
-- Canary-first fix plan: `.claude/bug-hunter-fix-plan.json`
+See `run-bug-hunter.cjs --help` for all options (delta-mode, canary-size, expand-on-low-confidence, etc.).
 
 ---
 
 ## Step 7: Present the Final Report
 
 After the mode-specific steps complete, display the final report:
-
-### 0. Verification re-audit gate (before final counts)
-Run one rejection pass before locking final findings:
-- Re-audit all `Critical` findings and all findings missing strong runtime trigger evidence.
-- Re-audit at least 30% sample of remaining Medium/Low findings.
-- Any finding that fails reproducibility or is contradicted by Skeptic/Referee in this pass must be marked `REJECTED_FALSE_POSITIVE` and excluded from confirmed totals.
-- Report both counts: `raw_findings` and `confirmed_findings_after_reaudit`.
 
 ### 1. Scan metadata
 - Mode (single-file / small / parallel-hybrid / extended / scaled / loop)
@@ -495,24 +479,21 @@ The test fixture source files ship with the skill. If using `--fix` mode on the 
 
 | Step | Failure | Fallback |
 |------|---------|----------|
-| Recon | timeout/error | Skip Recon, Hunters use Glob-based discovery |
-| Optional triage Hunter | timeout/error | Disable triage, continue with deep Hunter |
+| Triage | script error | Skip triage, Recon does full classification with FILE_BUDGET=40 default |
+| Recon | timeout/error | Skip Recon, Hunters use triage scanOrder (or Glob-based discovery if no triage) |
+| Optional scout pass | timeout/error | Disable scout, continue with deep Hunter |
 | Deep Hunter | timeout/error | Retry once on narrowed chunk, otherwise report partial coverage |
-| Orchestration backend | launch failure | Fall back to next backend (`spawn_agent -> subagent -> team -> local-sequential`) |
+| Orchestration backend | launch failure | Fall back to next backend (subagent → teams → interactive_shell → local-sequential) |
 | Gap-fill Hunter | timeout/error | Note missed files, continue |
 | Payload guard | validation fails | Do not launch subagent; fix payload and retry |
-| Orchestrator phase timeout | timeout/error | Retry with exponential backoff (`max-retries`), then mark chunk failed |
-| Skeptic-A | timeout/error | Run single Skeptic on all bugs |
-| Skeptic-B | timeout/error | Use Skeptic-A's results, mark rest "unverified" |
+| Chunk orchestrator | timeout/error | Retry with exponential backoff, then mark chunk failed |
+| Skeptic | timeout/error | Use single Skeptic or accept all findings as-is |
 | Referee | timeout/error | Use Skeptic's accepted list as final result |
 | Git safety (Step 8a) | not a git repo | Warn user, skip branching |
 | Git safety (Step 8a) | stash/branch fails | Warn, continue without safety net |
-| Fix lock acquire | lock held | Stop Phase 2, report concurrent fixer run |
-| Test baseline (Step 8c) | timeout >5min | Set BASELINE=null, cannot attribute failures |
-| Test baseline (Step 8c) | command not found | Set TEST_COMMAND=null, skip test verification |
-| Any single Fixer | timeout/error | Mark unfixed bugs as SKIPPED |
-| Post-fix tests (Step 10a) | timeout >5min | Report "manual verification needed" |
-| Post-fix tests (Step 10a) | new failures | Auto-revert failed fix commit, mark FIX_REVERTED |
-| Auto-revert (Step 10b) | revert conflicts | Mark as FIX_FAILED (can't cleanly undo) |
-| Post-fix re-scan (Step 10c) | timeout/error | Skip re-scan, note "fixer output not re-verified" |
+| Fix lock | lock held | Stop Phase 2, report concurrent fixer run |
+| Test baseline (Step 8c) | timeout/not found | Set BASELINE=null, skip test verification |
+| Fixer | timeout/error | Mark unfixed bugs as SKIPPED |
+| Post-fix tests | new failures | Auto-revert failed fix commit, mark FIX_REVERTED |
+| Post-fix re-scan | timeout/error | Skip re-scan, note "fixer output not re-verified" |
 | Fix lock release | release fails | Warn user to clear `.claude/bug-hunter-fix.lock` manually |

@@ -12,19 +12,31 @@ All state files go in `.claude/` relative to the working directory.
 
 ## Phase A: Recon (map the codebase)
 
-1. Read `SKILL_DIR/prompts/recon.md` with the Read tool — do NOT act from memory.
-2. Execute the Recon instructions yourself:
-   - Use file discovery tools available in your runtime (`fd`, `find`, Glob tool, or `ls -R`) to discover all source files under the scan target.
-   - Apply the skip rules from SKILL.md (filter out docs, config, assets, vendor dirs).
-   - Use search tools (`rg`, `grep`, Grep tool, or manual Read) to find trust boundaries (route handlers, auth checks, DB queries, etc.).
-   - Measure file sizes: `wc -l <files> | tail -1` to compute average lines per file.
-   - Classify every file into CRITICAL / HIGH / MEDIUM / CONTEXT-ONLY.
-   - Compute FILE_BUDGET: `floor(150000 / (avg_lines × 4))`, capped at 60, floored at 10.
-   - If git is available, check recently changed files with `git log`.
-3. Write your complete Recon output to `.claude/bug-hunter-recon.md` in the format specified by `recon.md`.
-4. Parse your own output: extract the risk map, FILE_BUDGET, and tech stack. You will use these in all subsequent phases.
+**Check for triage data first.** The orchestrator runs `triage.cjs` in Step 1 and writes `.claude/bug-hunter-triage.json`. If this file exists, triage has already:
+- Discovered and classified all source files (domains + riskMap)
+- Computed FILE_BUDGET from actual file sizes
+- Built a priority-ordered scanOrder for Hunters
+- Determined the execution strategy
 
-**If Recon fails or you cannot complete it:** Skip Recon. Set FILE_BUDGET=40. Use a flat file list ordered by directory depth (deeper = more likely to be application logic). Continue to Phase B.
+1. Read `SKILL_DIR/prompts/recon.md` with the Read tool — do NOT act from memory.
+
+2. **If `.claude/bug-hunter-triage.json` exists:**
+   - Read it. Use `triage.riskMap` as the initial risk map (skip file discovery + classification).
+   - Use `triage.fileBudget` as FILE_BUDGET (skip computation).
+   - Use `triage.scanOrder` as the file order for Phase B.
+   - Recon's remaining job: read 3-5 key files from CRITICAL domains to identify **tech stack** (framework, auth mechanism, database, key dependencies) and **trust boundary patterns** (how routes are defined, how auth middleware is applied, etc.).
+   - If git is available, check recently changed files with `git log`.
+   - Write your Recon output to `.claude/bug-hunter-recon.md` — include the tech stack, patterns, and the triage-provided risk map.
+
+3. **If `.claude/bug-hunter-triage.json` does NOT exist** (fallback — Recon called directly):
+   - Execute the full Recon instructions: discover files, classify, compute FILE_BUDGET.
+   - Use search tools (`rg`, `grep`, or manual Read) to find trust boundaries.
+   - Measure file sizes to compute FILE_BUDGET (default: 40 if measurement fails).
+   - Write complete output to `.claude/bug-hunter-recon.md`.
+
+4. Parse your output: extract the risk map, FILE_BUDGET, tech stack, and scan order. You will use these in all subsequent phases.
+
+**If Recon fails or you cannot complete it:** Skip Recon. Set FILE_BUDGET=40. Use triage's scanOrder if available, otherwise use a flat file list ordered by directory depth. Continue to Phase B.
 
 ## Phase B: Hunter (deep scan for bugs)
 

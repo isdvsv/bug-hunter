@@ -1,203 +1,76 @@
 # Scaled Mode (FILE_BUDGET×2+1 to FILE_BUDGET×3 files) — state-driven sequential
 
-Use this mode for large scans that still fit in one run but require strict state tracking and anti-compaction controls. All progress is checkpointed to `.claude/bug-hunter-state.json` so interrupted runs can resume.
-
-All phases use the `AGENT_BACKEND` selected during SKILL preflight.
-
----
-
-## Step 4s: Run Recon
-
-Same as Extended mode (Step 4e). Use the backend-specific dispatch pattern to run Recon and capture risk map + service boundaries + tech stack.
-
-Write output to `.claude/bug-hunter-recon.md`.
+This mode handles large targets requiring 3+ chunks with full resume state.
+All phases are dispatched using the `AGENT_BACKEND` selected during SKILL preflight.
 
 ---
 
-## Step 5s: Initialize durable run state
+## Triage Integration
 
-Create or load `.claude/bug-hunter-state.json`. If the file already exists (interrupted run), **resume from it** — do NOT restart.
-
-**Initialize when missing:**
-
-1. Write the source file list to `.claude/source-files.json` (JSON array of file paths, ordered by risk from Recon).
-2. Initialize state:
-   ```bash
-   node "$SKILL_DIR/scripts/bug-hunter-state.cjs" init ".claude/bug-hunter-state.json" "scaled" ".claude/source-files.json" 30
-   ```
-
-This creates a state file with:
-- `runId` — unique identifier for this run
-- `mode: "scaled"`
-- `chunks[]` — each with `id`, `files`, `status` (pending → in_progress → done), `retries`
-- `findings[]` — bug ledger with stable BUG-IDs
-- `scanMetrics` — files_scanned, findings_count, timestamps
-- `parallelDisabled` — flag, starts false
-
-**Resume:** If `.claude/bug-hunter-state.json` already exists, read it and skip to Step 6s. Process only chunks with status `pending` or `in_progress`.
+Before any phase, check for `.claude/bug-hunter-triage.json` (written by Step 1). If present:
+- Use `triage.riskMap` as the risk map — skip Recon's file classification.
+- Use `triage.scanOrder` as the chunk-building source (files already priority-ordered).
+- Use `triage.fileBudget` as FILE_BUDGET and chunk size cap.
+- Use `triage.domains` for service-aware partitioning if available.
+- Recon becomes an enrichment pass: identify tech stack and trust boundary patterns only.
 
 ---
 
-## Step 6s: Sequential chunk loop
+## Step 4: Run Recon
 
-Process ONE chunk at a time. After each chunk, persist findings to state before starting the next.
+Dispatch Recon using the standard dispatch pattern (see `_dispatch.md`, role=`recon`).
 
-### For each pending chunk:
+Same as Extended mode: Recon enriches triage data with tech stack and patterns. If no triage, Recon does full discovery.
 
-#### 1. Get next chunk
+---
+
+## Step 5: Run Chunked Hunters with Resume State
+
+### 5a. Build chunks and initialize state
+
+Same as Extended mode. Partition from `triage.scanOrder` or risk map. Initialize state:
 ```bash
-node "$SKILL_DIR/scripts/bug-hunter-state.cjs" next-chunk ".claude/bug-hunter-state.json"
-```
-Returns the next pending chunk's ID and file list. If no pending chunks remain, skip to Step 7s.
-
-#### 2. Mark in-progress
-```bash
-node "$SKILL_DIR/scripts/bug-hunter-state.cjs" mark-chunk ".claude/bug-hunter-state.json" "<chunk-id>" in_progress
+node "$SKILL_DIR/scripts/bug-hunter-state.cjs" init ".claude/bug-hunter-state.json" "scaled" ".claude/source-files.json" 30
 ```
 
-#### 3. Hash cache filter
+### 5b. Execute chunks with hash-based skip filtering
+
+Before each chunk, apply skip filtering to avoid re-scanning files already processed (handles resume after interruption):
 ```bash
 node "$SKILL_DIR/scripts/bug-hunter-state.cjs" hash-filter ".claude/bug-hunter-state.json" ".claude/chunk-<id>-files.json"
 ```
-Returns a filtered file list. Scan ONLY the returned `scan` files (skips unchanged files from previous partial runs).
 
-#### 4. Run Hunter on this chunk
+For each chunk: dispatch Hunter, record findings, mark done — same pattern as Extended mode.
 
-**If `AGENT_BACKEND = "local-sequential"`:**
+### 5c. Cross-chunk consistency
 
-1. Read `SKILL_DIR/prompts/hunter.md` and `SKILL_DIR/prompts/doc-lookup.md`.
-2. Execute Hunter on this chunk's filtered files.
-3. Track FILES SCANNED / FILES SKIPPED honestly.
-4. Write findings to `.claude/chunk-<id>-findings.json`.
+After all chunks complete:
+1. Merge findings from state into `.claude/bug-hunter-findings.md`.
+2. Run consistency check: look for duplicate BUG-IDs across chunks and conflicting claims on the same file/line.
+3. Resolve conflicts: keep the finding with the stronger evidence.
 
-**If `AGENT_BACKEND = "subagent"` or `"teams"`:**
-
-1. Read prompts + `SKILL_DIR/templates/subagent-wrapper.md`.
-2. Generate and fill payload:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" generate hunter ".claude/payloads/hunter-chunk-<id>.json"
-   ```
-3. Fill: `skillDir`, `targetFiles` (this chunk's filtered files), `riskMap`, `techStack`.
-4. Validate:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" validate hunter ".claude/payloads/hunter-chunk-<id>.json"
-   ```
-5. Fill subagent-wrapper template. Include chunk context:
-   - "You are scanning chunk {chunk-id} of {total-chunks}."
-   - "Previous chunks found {N} bugs so far. Focus on NEW findings."
-6. Dispatch and wait for completion.
-
-**Parallel fallback:** If any parallel dispatch fails, set `parallelDisabled`:
-```bash
-node "$SKILL_DIR/scripts/bug-hunter-state.cjs" set-parallel-disabled ".claude/bug-hunter-state.json" true
-```
-Continue fully sequential for all remaining chunks.
-
-#### 5. Gap-fill for this chunk
-Compare chunk's FILES SCANNED against chunk's file list. If any CRITICAL/HIGH files were skipped, scan them now.
-
-#### 6. Record findings in state
-```bash
-node "$SKILL_DIR/scripts/bug-hunter-state.cjs" record-findings ".claude/bug-hunter-state.json" ".claude/chunk-<id>-findings.json" "scaled"
-```
-
-#### 7. Update hash cache
-```bash
-node "$SKILL_DIR/scripts/bug-hunter-state.cjs" hash-update ".claude/bug-hunter-state.json" ".claude/chunk-<id>-scanned-files.json" scanned
-```
-
-#### 8. Mark chunk done
-```bash
-node "$SKILL_DIR/scripts/bug-hunter-state.cjs" mark-chunk ".claude/bug-hunter-state.json" "<chunk-id>" done
-```
-
-Repeat from step 1 for the next pending chunk.
+If TOTAL FINDINGS: 0, skip Skeptic and Referee. Go to Step 7 (Final Report) in SKILL.md.
 
 ---
 
-## Step 7s: Skeptic and Referee
+## Step 6: Run Skeptic(s)
 
-After ALL chunks are `done`:
+Dispatch 1-2 Skeptics by directory using the standard dispatch pattern (see `_dispatch.md`, role=`skeptic`).
 
-### Merge findings
-1. Read all findings from `.claude/bug-hunter-state.json` ledger.
-2. Deduplicate by file + line + claim overlap.
-3. Renumber BUG-IDs sequentially.
-4. Write merged findings to `.claude/bug-hunter-findings.md`.
-
-### Skeptic pass
-
-**If `AGENT_BACKEND = "local-sequential"`:**
-
-1. Read `SKILL_DIR/prompts/skeptic.md` and `SKILL_DIR/prompts/doc-lookup.md`.
-2. **Switch mindset**: adversarial Skeptic.
-3. Read `.claude/bug-hunter-findings.md`.
-4. For each finding: re-read actual code, check framework protections, apply risk calculation.
-5. Write output to `.claude/bug-hunter-skeptic.md`.
-
-**If `AGENT_BACKEND = "subagent"` or `"teams"`:**
-
-Run Skeptics sequentially by directory cluster:
-- Total bugs ≤ 8: ONE Skeptic on all bugs.
-- Total bugs > 8: split into cluster sets, dispatch sequentially.
-
-For each Skeptic:
-1. Generate and fill payload:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" generate skeptic ".claude/payloads/skeptic-<id>.json"
-   ```
-2. Fill `bugs` with assigned bugs only. Fill `techStack`.
-3. Validate:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" validate skeptic ".claude/payloads/skeptic-<id>.json"
-   ```
-4. Fill template and dispatch. Wait for completion before next Skeptic.
-
-Merge Skeptic output. Write to `.claude/bug-hunter-skeptic.md`.
-
-### Referee
-
-**If `AGENT_BACKEND = "local-sequential"`:**
-
-1. Read `SKILL_DIR/prompts/referee.md`.
-2. Read both findings and skeptic output.
-3. For Tier 1: re-read code a THIRD time.
-4. Make final verdicts. Write to `.claude/bug-hunter-referee.md`.
-
-**If `AGENT_BACKEND = "subagent"` or `"teams"`:**
-
-1. Generate and fill payload:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" generate referee ".claude/payloads/referee-scaled.json"
-   ```
-2. Fill: `findings`, `skepticResults`.
-3. Validate:
-   ```bash
-   node "$SKILL_DIR/scripts/payload-guard.cjs" validate referee ".claude/payloads/referee-scaled.json"
-   ```
-4. Dispatch. Wait for completion.
-
-**Fallback:** If Referee fails, use Skeptic-accepted bugs. Mark as `REFEREE_UNAVAILABLE`.
+Split bugs by directory/service for focused scope. Merge results.
 
 ---
 
-## Step 8s: Completion rules
+## Step 7: Run Referee
 
-The Final Report (Step 7 in SKILL.md) MUST include:
+Dispatch Referee using the standard dispatch pattern (see `_dispatch.md`, role=`referee`).
 
-1. **Chunk progress**: Completed chunks vs total (e.g., "8/8 chunks scanned").
-2. **Files coverage**: Total files scanned vs total source files.
-3. **Files skipped**: List any skipped files with reasons (context exhaustion, unchanged, etc.).
-4. **Parallel status**: Whether `parallelDisabled` was triggered (and why).
-5. **Resume info**: If the run was interrupted, include:
-   ```
-   To resume: The state file `.claude/bug-hunter-state.json` contains
-   checkpoint data. Re-run `/bug-hunter` and it will resume from the
-   last completed chunk.
-   ```
+Pass merged Hunter findings + Skeptic challenges.
 
 ---
 
-## After Step 8s
+## After Step 7
 
-Proceed to **Step 7** (Final Report) in SKILL.md with the coverage info from Step 8s.
+Proceed to **Step 7** (Final Report) in SKILL.md.
+
+If `--loop` was specified and coverage is incomplete, the ralph-loop will iterate to cover remaining files.

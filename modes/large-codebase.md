@@ -13,9 +13,9 @@ This mode handles truly large codebases (monorepos, enterprise apps, 200+ source
 
 ### Tier 0: Rapid Recon (already done by triage)
 
-**If triage was run (Step 0.4)**, Tier 0 is already complete. The triage JSON at `.claude/bug-hunter-triage.json` contains:
+**If triage was run (Step 1)**, Tier 0 is already complete. The triage JSON at `.claude/bug-hunter-triage.json` contains:
 - `domains`: all domains with tier classification, file counts, and risk breakdown
-- `domainFileLists`: per-domain file paths (for large-codebase strategy)
+- `domainFileLists`: per-domain file paths — use these directly as the file list for each Tier 1 domain audit
 - `fileBudget`, `scanOrder`, `tokenEstimate`
 
 Read the triage JSON and proceed directly to Tier 1. Do NOT re-scan the filesystem.
@@ -68,10 +68,13 @@ Process ONE domain at a time, running the **full pipeline** (Recon → Hunter �
 
 ```
 For each domain (CRITICAL first, then HIGH, then MEDIUM):
-  1. Run Recon on THIS domain only → domain-specific risk map
-  2. Run Hunter on THIS domain only → domain-specific findings
-  3. Run Skeptic on THIS domain's findings only → challenges
-  4. Run Referee on THIS domain only → confirmed bugs
+  1. Get this domain's file list:
+     - If triage exists: use triage.domainFileLists[domainPath]
+     - If no triage: use fd/find to list files in this domain's directory
+  2. Run Recon on THIS domain only → domain-specific risk map and tech stack
+  3. Run Hunter on THIS domain only → domain-specific findings
+  4. Run Skeptic on THIS domain's findings only → challenges
+  5. Run Referee on THIS domain only → confirmed bugs
 
   Write domain results to:
     .claude/domains/<domain-name>/recon.md
