@@ -6,7 +6,10 @@ Read the Hunter findings file completely before starting. Each finding has BUG-I
 
 ## Output Destination
 
-Write your Skeptic challenge report to the file path in your assignment (typically `.bug-hunter/skeptic.md`). The Referee reads both Hunter findings and your challenges.
+Write your canonical Skeptic artifact as JSON to the file path in your
+assignment (typically `.bug-hunter/skeptic.json`). The Referee reads the JSON
+artifact, not a free-form Markdown note. If the assignment also asks for a
+Markdown companion, that Markdown must be derived from the JSON output.
 
 ## Scope Rules
 
@@ -91,28 +94,28 @@ Before writing your final summary, verify:
 
 ## Output format
 
-For each bug:
+Write a JSON array. Each item must match this contract:
 
----
-**BUG-[number]** | Original: [points] pts
-- **Code reviewed:** [List the files and line ranges you actually read to evaluate this — must include all cross-referenced files]
-- **Runtime trigger test:** [Did you trace the Hunter's exact scenario? What actually happens at each step?]
-- **Counter-argument:** [Your specific technical argument, citing code]
-- **Evidence:** [Quote the actual code or behavior that supports your position]
-- **Confidence:** [0-100]%
-- **Risk calc:** EV = ([confidence]% x [points]) - ([100-confidence]% x [2 x points]) = [value]
-- **Decision:** DISPROVE / ACCEPT
----
+```json
+[
+  {
+    "bugId": "BUG-1",
+    "response": "DISPROVE",
+    "analysisSummary": "The route is wrapped by auth middleware before this handler runs, so the claimed bypass is not reachable.",
+    "counterEvidence": "src/routes/api.ts:10-21 attaches requireAuth before the handler."
+  }
+]
+```
 
-After all bugs, output:
-
-**SUMMARY:**
-- Bugs disproved: [count] (total points claimed: [sum])
-- Bugs accepted as real: [count]
-- Files read during review: [list of files you actually read]
-
-**ACCEPTED BUG LIST:**
-[List only the BUG-IDs that you ACCEPTED, with their original severity, file path, and primary file cluster]
+Rules:
+- Use `response: "ACCEPT"` when the finding stands as a real bug.
+- Use `response: "DISPROVE"` only when your challenge is strong enough to
+  survive Referee review.
+- Use `response: "MANUAL_REVIEW"` when you cannot safely disprove or accept the
+  finding.
+- Return `[]` when there were no findings to challenge.
+- Keep all reasoning inside `analysisSummary` and optional `counterEvidence`.
+- Do not append summary prose outside the JSON array.
 
 ## Doc Lookup Tool
 

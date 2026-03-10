@@ -76,6 +76,8 @@ If worktree rules are provided above (non-empty), these apply:
 
 **Write your complete output to:** `{OUTPUT_FILE_PATH}`
 
+**Artifact name for validation:** `{OUTPUT_ARTIFACT}`
+
 Follow the output format specified in your system prompt EXACTLY.
 The orchestrator will read this file to pass your results to the next pipeline phase.
 
@@ -84,12 +86,18 @@ If the file path directory does not exist, create it first:
 mkdir -p "$(dirname '{OUTPUT_FILE_PATH}')"
 ```
 
+After writing the canonical artifact, validate it before you stop:
+```bash
+node "{SKILL_DIR}/scripts/schema-validate.cjs" "{OUTPUT_ARTIFACT}" "{OUTPUT_FILE_PATH}"
+```
+
 ## Completion
 
 When you have finished your analysis:
 1. Write your report to `{OUTPUT_FILE_PATH}`
-2. Output a brief summary to stdout (one paragraph)
-3. Stop. Do not continue to other phases.
+2. Validate the artifact with `schema-validate.cjs`
+3. Output a brief summary to stdout (one paragraph)
+4. Stop. Do not continue to other phases.
 
 ---
 
@@ -106,4 +114,5 @@ When you have finished your analysis:
 | `{RISK_MAP}` | Recon output risk classification | From `.bug-hunter/recon.md` |
 | `{TECH_STACK}` | Framework, auth, DB, key dependencies | "Express + JWT + Prisma + Redis" |
 | `{PHASE_SPECIFIC_CONTEXT}` | Extra context for this phase | For Skeptic: the Hunter findings. For Referee: findings + Skeptic challenges. |
-| `{OUTPUT_FILE_PATH}` | Where to write the output | `.bug-hunter/findings.md` |
+| `{OUTPUT_FILE_PATH}` | Where to write the canonical artifact | `.bug-hunter/findings.json` |
+| `{OUTPUT_ARTIFACT}` | Artifact name passed to `schema-validate.cjs` | `findings`, `skeptic`, `referee`, `fix-report` |

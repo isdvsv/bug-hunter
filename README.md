@@ -280,7 +280,7 @@ Bug Hunter automatically selects the optimal scanning strategy based on your cod
 | **120–180 files** | Scaled | State-driven chunks with resume capability |
 | **180+ files** | Large-codebase | Domain-scoped pipelines + boundary audits (loop mode, on by default) |
 
-Loop mode is **on by default** — the pipeline runs iteratively until every critical and high-risk file has been audited, with persistent state enabling stop-and-resume workflows. Use `--no-loop` for a single-pass scan.
+Loop mode is **on by default** — the pipeline runs iteratively until every queued scannable source file has been audited and, in fix mode, every discovered fixable bug has been processed. The agent should keep descending through CRITICAL → HIGH → MEDIUM → LOW automatically unless the user interrupts. Use `--no-loop` for a single-pass scan.
 
 ---
 
@@ -523,12 +523,16 @@ Every run creates a `.bug-hunter/` directory (add to `.gitignore`) containing:
 |------|-----------|----------|
 | `report.md` | Always | Human-readable report: confirmed bugs, dismissed findings, coverage stats |
 | `findings.json` | Always | Machine-readable JSON for CI/CD and dashboards |
+| `skeptic.json` | When findings exist | Canonical Skeptic challenge artifact |
+| `referee.json` | When findings exist | Canonical Referee verdict artifact |
+| `coverage.json` | Loop/autonomous runs | Canonical coverage and loop state |
 | `triage.json` | Always | File classification, risk map, strategy selection, token estimates |
 | `recon.md` | Always | Tech stack analysis, attack surface mapping, scan order |
-| `findings.md` | Always | Raw Hunter findings before Skeptic review |
-| `skeptic.md` | Always | Skeptic challenge decisions with evidence |
-| `referee.md` | Always | Referee final verdicts with enrichment |
-| `fix-report.md` | Fix mode | Per-bug fix status, verification results, git diff summary |
+| `findings.md` | Optional | Markdown companion rendered from `findings.json` |
+| `skeptic.md` | Optional | Markdown companion rendered from `skeptic.json` |
+| `referee.md` | Optional | Markdown companion rendered from `referee.json` |
+| `coverage.md` | Loop/autonomous runs | Markdown companion rendered from `coverage.json` |
+| `fix-report.md` | Fix mode | Markdown companion for fix results |
 | `fix-report.json` | Fix mode | Machine-readable fix results for CI/CD gating and dashboards |
 | `worktree-*/` | Worktree fix mode | Temporary isolated worktrees for Fixer subagents (auto-cleaned) |
 | `threat-model.md` | `--threat-model` | STRIDE threat model with trust boundaries and data flows |
@@ -560,7 +564,7 @@ The pipeline adapts to whatever it finds. Triage classifies files by extension a
 | `--fix` | Find and auto-fix bugs (default behavior) |
 | `--approve` | Interactive mode — ask before each fix |
 | `--autonomous` | Full auto-fix with zero intervention |
-| `--loop` | Iterative mode — runs until 100% critical file coverage **(on by default)** |
+| `--loop` | Iterative mode — runs until 100% queued source-file coverage **(on by default)** |
 | `--no-loop` | Disable loop mode — single-pass scan only |
 | `--deps` | Include dependency CVE scanning with reachability analysis |
 | `--threat-model` | Generate or use STRIDE threat model for targeted security analysis |

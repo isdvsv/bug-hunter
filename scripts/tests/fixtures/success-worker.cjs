@@ -34,9 +34,14 @@ const payload = [
   {
     bugId: `BUG-${options['chunk-id'] || '0'}`,
     severity: 'Low',
+    category: 'logic',
     file: 'src/example.ts',
     lines: '1',
-    claim: 'example'
+    claim: 'example',
+    evidence: 'src/example.ts:1 example evidence',
+    runtimeTrigger: 'Run the success worker fixture',
+    crossReferences: ['Single file'],
+    confidenceScore: 80
   }
 ];
 fs.writeFileSync(findingsJson, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');

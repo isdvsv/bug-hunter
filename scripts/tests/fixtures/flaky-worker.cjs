@@ -54,9 +54,14 @@ if (findingsJson) {
     {
       bugId: `BUG-${chunkId}`,
       severity: 'Medium',
+      category: 'logic',
       file: `src/retry-${chunkId}.ts`,
       lines: '10-11',
-      claim: `retry-success-${chunkId}`
+      claim: `retry-success-${chunkId}`,
+      evidence: `src/retry-${chunkId}.ts:10-11 retry success evidence`,
+      runtimeTrigger: `Retry attempt for ${chunkId}`,
+      crossReferences: ['Single file'],
+      confidenceScore: 88
     }
   ];
   fs.writeFileSync(findingsJson, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');

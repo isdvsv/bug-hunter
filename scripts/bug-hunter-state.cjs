@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { validateArtifactValue } = require('./schema-runtime.cjs');
 
 const VALID_CHUNK_STATUS = new Set(['pending', 'in_progress', 'done', 'failed']);
 const DEFAULT_CHUNK_SIZE = 30;
@@ -163,7 +164,7 @@ function assertArray(value, label) {
   }
 }
 
-function toConfidence(value) {
+function toConfidenceScore(value) {
   if (value === null || value === undefined || value === '') {
     return null;
   }
@@ -270,19 +271,26 @@ function main() {
     }
     const state = readState(statePath);
     const findings = readJson(findingsJsonPath);
-    assertArray(findings, 'findingsJson');
+    const validation = validateArtifactValue({
+      artifactName: 'findings',
+      value: findings
+    });
+    if (!validation.ok) {
+      throw new Error(`Invalid findings artifact: ${validation.errors.join('; ')}`);
+    }
 
     let inserted = 0;
     let updated = 0;
     for (const finding of findings) {
       const file = String(finding.file || '').trim();
-      if (!file) {
-        continue;
-      }
       const lines = String(finding.lines || '').trim();
       const claim = String(finding.claim || '').trim();
       const severity = String(finding.severity || 'Low');
-      const confidence = toConfidence(finding.confidence);
+      const category = String(finding.category || '').trim();
+      const evidence = String(finding.evidence || '').trim();
+      const runtimeTrigger = String(finding.runtimeTrigger || '').trim();
+      const crossReferences = Array.isArray(finding.crossReferences) ? finding.crossReferences : [];
+      const confidenceScore = toConfidenceScore(finding.confidenceScore);
       const bugId = String(finding.bugId || '').trim();
       const key = `${file}|${lines}|${claim}`;
       const existing = state.bugLedger.find((entry) => entry.key === key);
@@ -293,8 +301,12 @@ function main() {
           severity,
           file,
           lines,
+          category,
           claim,
-          confidence,
+          evidence,
+          runtimeTrigger,
+          crossReferences,
+          confidenceScore,
           status: 'open',
           source,
           updatedAt: nowIso()
@@ -310,10 +322,14 @@ function main() {
       if (!existing.bugId && bugId) {
         existing.bugId = bugId;
       }
-      if (existing.confidence === null && confidence !== null) {
-        existing.confidence = confidence;
-      } else if (existing.confidence !== null && confidence !== null) {
-        existing.confidence = Math.max(existing.confidence, confidence);
+      existing.category = category || existing.category;
+      existing.evidence = evidence || existing.evidence;
+      existing.runtimeTrigger = runtimeTrigger || existing.runtimeTrigger;
+      existing.crossReferences = crossReferences.length > 0 ? crossReferences : existing.crossReferences;
+      if (existing.confidenceScore === null && confidenceScore !== null) {
+        existing.confidenceScore = confidenceScore;
+      } else if (existing.confidenceScore !== null && confidenceScore !== null) {
+        existing.confidenceScore = Math.max(existing.confidenceScore, confidenceScore);
       }
       existing.updatedAt = nowIso();
       existing.source = source;
@@ -323,7 +339,7 @@ function main() {
     state.metrics.findingsTotal += findings.length;
     state.metrics.findingsUnique = state.bugLedger.length;
     state.metrics.lowConfidenceFindings = state.bugLedger.filter((entry) => {
-      return entry.confidence === null || entry.confidence < 75;
+      return entry.confidenceScore === null || entry.confidenceScore < 75;
     }).length;
     saveState(statePath, state);
     console.log(JSON.stringify({

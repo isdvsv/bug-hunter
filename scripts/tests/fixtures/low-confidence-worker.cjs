@@ -54,10 +54,16 @@ if (findingsJson && scanFiles.length > 0) {
     {
       bugId: `BUG-${chunkId}`,
       severity: 'Critical',
-      confidence: Number.isInteger(confidence) ? confidence : 60,
+      category: 'security',
       file: scanFiles[0],
       lines: '1',
-      claim: `Low-confidence risk in ${path.basename(scanFiles[0])}`
+      claim: `Low-confidence risk in ${path.basename(scanFiles[0])}`,
+      evidence: `${scanFiles[0]}:1 fixture evidence`,
+      runtimeTrigger: `Load ${path.basename(scanFiles[0])} through the low-confidence worker`,
+      crossReferences: ['Single file'],
+      confidenceScore: Number.isInteger(confidence) ? confidence : 60,
+      stride: 'Tampering',
+      cwe: 'CWE-20'
     }
   ]);
 }

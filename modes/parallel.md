@@ -70,7 +70,7 @@ Pass to the Hunter:
 - If scout hints exist (from Step 5), use them to prioritize certain code sections, but scan all files regardless.
 - `doc-lookup.md` contents as phase-specific context.
 
-After completion, read `.bug-hunter/findings.md`.
+After completion, read `.bug-hunter/findings.json`.
 
 **Merge scout + deep findings:** If scout pass ran, compare scout findings with deep Hunter findings. Promote any scout-only findings (bugs the deep Hunter missed) into the findings list for Skeptic review.
 
@@ -80,7 +80,7 @@ If TOTAL FINDINGS: 0, skip Skeptic and Referee. Go to Step 7 (Final Report) in S
 
 ## Step 5-verify: Gap-fill check
 
-Same as small mode: compare FILES SCANNED vs risk map, re-scan any missed CRITICAL/HIGH files.
+Same as small mode: compare FILES SCANNED vs risk map, then re-scan any missed queued scannable files in priority order.
 
 ---
 
@@ -104,7 +104,7 @@ Dispatch Referee using the standard dispatch pattern (see `_dispatch.md`, role=`
 
 Pass the merged Hunter findings + Skeptic challenges.
 
-After completion, read `.bug-hunter/referee.md`.
+After completion, read `.bug-hunter/referee.json`, then render `.bug-hunter/report.md` from the JSON artifacts.
 
 ---
 

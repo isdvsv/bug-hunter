@@ -2,41 +2,68 @@
 
 ## Current status
 
-- Audited the bug-hunter skill against its own codebase in local-sequential mode.
-- Confirmed and fixed four orchestration bugs:
-  - LOW-only repos produced an empty `scanOrder` and `scannableFiles = 0`
-  - preflight required optional `code-index.cjs`
-  - backend auto-selection used `team` instead of `teams`
-  - low-confidence delta expansion ignored the configured `--delta-hops`
-- Wrote audit artifacts to `.bug-hunter/recon.md`, `.bug-hunter/findings.md`, `.bug-hunter/skeptic.md`, `.bug-hunter/referee.md`, `.bug-hunter/report.md`, and `.bug-hunter/findings.json`
+- Advanced the structured-output migration from
+  `docs/plans/2026-03-11-structured-output-migration-plan.md`.
+- Landed the main contract migration slices:
+  - added `schemas/*.schema.json` for recon, findings, skeptic, referee,
+    coverage, fix-report, and shared definitions
+  - added `scripts/schema-runtime.cjs` and `scripts/schema-validate.cjs`
+  - updated `payload-guard.cjs` to use real schema refs
+  - updated `bug-hunter-state.cjs` to reject malformed findings and persist
+    canonical `confidenceScore` metadata
+  - updated `run-bug-hunter.cjs` to fail and retry chunks when `findings.json`
+    is missing or schema-invalid
+  - added canonical `coverage.json` output plus derived `coverage.md`
+  - added `scripts/render-report.cjs` for report/coverage Markdown rendering
+  - updated Hunter/Skeptic/Referee/Fixer prompts to JSON-first output contracts
+  - updated major mode docs, SKILL, README, eval text, and wrapper template to
+    point at canonical JSON artifacts
+  - added `run-bug-hunter.cjs phase` so Skeptic, Referee, and Fixer artifacts
+    get orchestrated schema validation with retry support
+  - updated worker fixtures and tests for the canonical findings contract
+- The structured-output migration plan is effectively complete; the remaining
+  follow-up is only secondary doc cleanup where old `*.md` artifact wording may
+  still appear in historical text.
 
 ## Last prompts
 
-- “[$bug-hunter](/Users/codex/.agents/skills/bug-hunter/SKILL.md) use this skill and work on loop to find bugs in current skill”
-- “<skill> ... bug-hunter ... </skill>”
+- "2026-03-11-structured-output-migration-plan.md"
+- "read this and start working on it"
+- "Remaining plan work is the bigger second half: prompt migration, rendered Markdown-from-JSON, coverage.json, and eval/doc alignment.- can we launch parallel team agents /subagents and work on loop until task is done?"
+- "fix these as well"
+- "continue"
 
 ## Verification
 
-- `node --test scripts/tests/run-bug-hunter.test.cjs`
+- `node --test scripts/tests/payload-guard.test.cjs scripts/tests/bug-hunter-state.test.cjs scripts/tests/run-bug-hunter.test.cjs`
 - `node --test scripts/tests/*.test.cjs`
 
-Both passed on 2026-03-10.
+Both passed on 2026-03-11.
 
-## Files changed
+## Files reviewed
 
-- `scripts/triage.cjs`
+- `scripts/payload-guard.cjs`
 - `scripts/run-bug-hunter.cjs`
+- `scripts/bug-hunter-state.cjs`
+- `scripts/schema-runtime.cjs`
+- `scripts/schema-validate.cjs`
+- `scripts/render-report.cjs`
+- `scripts/tests/payload-guard.test.cjs`
+- `scripts/tests/bug-hunter-state.test.cjs`
 - `scripts/tests/run-bug-hunter.test.cjs`
+- `scripts/tests/render-report.test.cjs`
+- `docs/plans/2026-03-11-structured-output-migration-plan.md`
 - `CHANGELOG.md`
-- `handoff.md`
+- `package.json`
 
 ## Next steps
 
-- If more hardening is wanted, audit `scripts/bug-hunter-state.cjs` for severity normalization and coverage accounting edge cases.
-- If the changelog format should stay strictly versioned, decide whether to convert the new timestamp entry to a release tag later.
+- sweep remaining secondary docs for stale `*.md` phase-artifact references
+- decide whether `run-bug-hunter.cjs phase` should be documented in README or
+  kept as an internal orchestration helper only
 
 ## Environment
 
 - Working directory: `/Users/codex/.agents/skills/bug-hunter`
 - Node: `v22.22.0`
-- Backend used for the audit: `local-sequential`
+- Backend used for the tests: `local-sequential`

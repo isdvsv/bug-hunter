@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.4] — 2026-03-11
+
+### Added
+- `run-bug-hunter.cjs phase` command for schema-validated Skeptic, Referee, and Fixer phase execution with retry support
+- runner tests for invalid Skeptic, Referee, and Fixer artifacts plus Markdown companion rendering
+
+### Changed
+- preflight now checks all shipped structured-output schemas, not just findings
+- structured-output migration now enforces orchestrated outbound validation beyond the local/manual path
+
+## [3.0.3] — 2026-03-11
+
+### Added
+- `scripts/render-report.cjs` Markdown renderer for final report and coverage summaries from canonical JSON artifacts
+- `scripts/tests/render-report.test.cjs` coverage for report and coverage rendering
+- `coverage.json` / `coverage.md` output path in `run-bug-hunter.cjs`
+
+### Changed
+- Hunter, Skeptic, Referee, and Fixer prompts now describe JSON-first canonical artifacts
+- loop, fix-loop, local-sequential, and major mode docs now point at `*.json` phase artifacts and `coverage.json`
+- README, SKILL docs, evals, and the subagent wrapper now describe rendered Markdown as a companion to canonical JSON
+- local/manual mode docs now validate findings, skeptic, and referee artifacts with `schema-validate.cjs`
+
+## [3.0.2] — 2026-03-11
+
+### Added
+- `schemas/*.schema.json` versioned contracts for recon, findings, skeptic, referee, coverage, fix-report, plus shared definitions and example findings fixtures
+- `scripts/schema-runtime.cjs` lightweight schema runtime and `scripts/schema-validate.cjs` CLI for local artifact checks
+
+### Changed
+- `payload-guard.cjs` now emits real schema refs instead of placeholder format/version objects
+- `bug-hunter-state.cjs` now rejects malformed findings and stores canonical `confidenceScore`, `category`, `evidence`, `runtimeTrigger`, and `crossReferences`
+- `run-bug-hunter.cjs` now treats missing or invalid `findings.json` as a retriable chunk failure and checks schema assets during preflight
+- script tests now cover schema validation, malformed findings rejection, and retry-after-schema-failure
+
+## [3.0.1] — 2026-03-11
+
+### Changed
+- Loop and fix-loop completion now require full queued source-file coverage, not just CRITICAL/HIGH coverage
+- Autonomous runs now continue through remaining MEDIUM and LOW files after prioritized chunks finish unless the user interrupts
+- Loop iteration guidance now scales `maxIterations` from queue size so large audits do not stop early
+- Large-codebase mode now treats LOW domains as part of the default autonomous queue instead of optional skipped work
+
 ## [3.0.0] — 2026-03-10
 
 ### Added
@@ -136,7 +179,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Coverage enforcement — partial audits produce explicit warnings
 - Large codebase strategy with domain-first tiered scanning
 
-[Unreleased]: https://github.com/codexstar69/bug-hunter/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/codexstar69/bug-hunter/compare/v3.0.4...HEAD
+[3.0.4]: https://github.com/codexstar69/bug-hunter/compare/v3.0.3...v3.0.4
+[3.0.3]: https://github.com/codexstar69/bug-hunter/compare/v3.0.2...v3.0.3
+[3.0.2]: https://github.com/codexstar69/bug-hunter/compare/v3.0.1...v3.0.2
+[3.0.1]: https://github.com/codexstar69/bug-hunter/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/codexstar69/bug-hunter/compare/v2.4.1...v3.0.0
 [2.4.1]: https://github.com/codexstar69/bug-hunter/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/codexstar69/bug-hunter/compare/v2.3.0...v2.4.0

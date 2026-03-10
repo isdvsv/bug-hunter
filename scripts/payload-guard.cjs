@@ -2,6 +2,10 @@
 
 const fs = require('fs');
 const path = require('path');
+const {
+  createSchemaRef,
+  validateSchemaRef
+} = require('./schema-runtime.cjs');
 
 const REQUIRED_BY_ROLE = {
   recon: ['skillDir', 'targetFiles', 'outputSchema'],
@@ -16,20 +20,20 @@ const TEMPLATES = {
   recon: {
     skillDir: '/absolute/path/to/bug-hunter',
     targetFiles: ['src/example.ts'],
-    outputSchema: { format: 'risk-map', version: 1 }
+    outputSchema: createSchemaRef('recon')
   },
   'triage-hunter': {
     skillDir: '/absolute/path/to/bug-hunter',
     targetFiles: ['src/example.ts'],
     techStack: { framework: '', auth: '', database: '', dependencies: [] },
-    outputSchema: { format: 'triage-findings', version: 1 }
+    outputSchema: createSchemaRef('findings')
   },
   hunter: {
     skillDir: '/absolute/path/to/bug-hunter',
     targetFiles: ['src/example.ts'],
     riskMap: { critical: [], high: [], medium: [], contextOnly: [] },
     techStack: { framework: '', auth: '', database: '', dependencies: [] },
-    outputSchema: { format: 'findings', version: 1 }
+    outputSchema: createSchemaRef('findings')
   },
   skeptic: {
     skillDir: '/absolute/path/to/bug-hunter',
@@ -46,13 +50,24 @@ const TEMPLATES = {
       }
     ],
     techStack: { framework: '', auth: '', database: '', dependencies: [] },
-    outputSchema: { format: 'challenges', version: 1 }
+    outputSchema: createSchemaRef('skeptic')
   },
   referee: {
     skillDir: '/absolute/path/to/bug-hunter',
-    findings: [{ bugId: 'BUG-1', severity: '', file: '', lines: '', claim: '', evidence: '', runtimeTrigger: '' }],
+    findings: [{
+      bugId: 'BUG-1',
+      severity: 'Critical',
+      category: 'security',
+      file: 'src/example.ts',
+      lines: '10-15',
+      claim: 'One-sentence description of the bug',
+      evidence: 'Exact code quote from the file',
+      runtimeTrigger: 'Specific scenario that triggers this bug',
+      crossReferences: ['Single file'],
+      confidenceScore: 92
+    }],
     skepticResults: { accepted: ['BUG-1'], disproved: [], details: [] },
-    outputSchema: { format: 'verdicts', version: 1 }
+    outputSchema: createSchemaRef('referee')
   },
   fixer: {
     skillDir: '/absolute/path/to/bug-hunter',
@@ -67,7 +82,7 @@ const TEMPLATES = {
       }
     ],
     techStack: { framework: '', auth: '', database: '', dependencies: [] },
-    outputSchema: { format: 'fix-report', version: 1 }
+    outputSchema: createSchemaRef('fix-report')
   }
 };
 
@@ -130,9 +145,8 @@ function validate(role, payload) {
   }
 
   if ('outputSchema' in payload) {
-    if (!payload.outputSchema || typeof payload.outputSchema !== 'object') {
-      errors.push('outputSchema must be an object');
-    }
+    const schemaValidation = validateSchemaRef(payload.outputSchema);
+    errors.push(...schemaValidation.errors);
   }
 
   return {

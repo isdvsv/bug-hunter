@@ -1,6 +1,6 @@
 # Ralph-Loop Mode (`--loop`)
 
-When `--loop` is present, the bug-hunter wraps itself in a ralph-loop that keeps iterating until the audit achieves full coverage. This is for thorough, autonomous audits where you want every file examined.
+When `--loop` is present, the bug-hunter wraps itself in a ralph-loop that keeps iterating until the audit achieves full queued coverage. This is for thorough, autonomous audits where you want every queued scannable source file examined unless the user interrupts.
 
 ## CRITICAL: Starting the ralph-loop
 
@@ -12,64 +12,62 @@ When `LOOP_MODE=true` is set (from `--loop` flag), before running the first pipe
 2. Call the `ralph_start` tool:
 
 ```
+MAX_LOOP_ITERATIONS = max(12, min(200, ceil(SCANNABLE_FILES / max(FILE_BUDGET, 1)) + 8))
+
 ralph_start({
   name: "bug-hunter-audit",
   taskContent: <the TODO.md content below>,
-  maxIterations: 10
+  maxIterations: MAX_LOOP_ITERATIONS
 })
 ```
 
 3. The ralph-loop system will then drive iteration. Each iteration:
    - You receive the task prompt with the current checklist state.
    - You execute one iteration of the bug-hunt pipeline (steps below).
-   - You update `.bug-hunter/coverage.md` with results.
-   - If ALL CRITICAL/HIGH files are DONE → output `<promise>COMPLETE</promise>` to end the loop.
+   - You update `.bug-hunter/coverage.json` with results and render `.bug-hunter/coverage.md` from it.
+   - If ALL queued scannable source files are DONE → output `<promise>COMPLETE</promise>` to end the loop.
    - Otherwise → call `ralph_done` to proceed to the next iteration.
 
 **Do NOT manually loop or re-invoke yourself.** The ralph-loop system handles iteration automatically after you call `ralph_start`.
 
 ## How it works
 
-1. **First iteration**: Run the normal pipeline (Recon → Hunters → Skeptics → Referee). At the end, write a coverage report to `.bug-hunter/coverage.md` using the machine-parseable format below.
+1. **First iteration**: Run the normal pipeline (Recon → Hunters → Skeptics →
+   Referee). At the end, write canonical coverage state to
+   `.bug-hunter/coverage.json` and render `.bug-hunter/coverage.md` from it.
 
 2. **Coverage check**: After each iteration, evaluate:
-   - If ALL CRITICAL and HIGH files show status DONE → output `<promise>COMPLETE</promise>` → loop ends
-   - If any CRITICAL/HIGH files are SKIPPED or PARTIAL → call `ralph_done` → loop continues
-   - If only MEDIUM files remain uncovered → output `<promise>COMPLETE</promise>` (MEDIUM gaps are acceptable)
+   - If ALL queued scannable source files show status DONE → output `<promise>COMPLETE</promise>` → loop ends
+   - If any queued scannable source files are SKIPPED or PARTIAL → call `ralph_done` → loop continues
+   - Do NOT stop just because the current prioritized tier is clean; continue descending through MEDIUM and LOW files automatically
 
-3. **Subsequent iterations**: Each new iteration reads `.bug-hunter/coverage.md` to see what's already been done, then runs the pipeline ONLY on uncovered files. New findings are appended to the cumulative bug list.
+3. **Subsequent iterations**: Each new iteration reads
+   `.bug-hunter/coverage.json` to see what's already been done, then runs the
+   pipeline ONLY on uncovered files. New findings are appended to the
+   cumulative bug list.
 
-## Coverage file format (machine-parseable)
+## Coverage file format (canonical)
 
-**`.bug-hunter/coverage.md`:**
-```markdown
-# Bug Hunt Coverage
-SCHEMA_VERSION: 2
-
-## Meta
-ITERATION: [N]
-STATUS: [IN_PROGRESS | COMPLETE]
-TOTAL_BUGS_FOUND: [N]
-TIMESTAMP: [ISO 8601]
-CHECKSUM: [line_count of Files section]|[line_count of Bugs section]
-
-## Files
-<!-- One line per file. Format: TIER|PATH|STATUS|ITERATION_SCANNED|BUGS_FOUND -->
-<!-- STATUS: DONE | PARTIAL | SKIPPED -->
-<!-- BUGS_FOUND: comma-separated BUG-IDs, or NONE -->
-CRITICAL|src/auth/login.ts|DONE|1|BUG-3,BUG-7
-CRITICAL|src/auth/middleware.ts|DONE|1|NONE
-HIGH|src/api/users.ts|DONE|1|BUG-12
-HIGH|src/api/payments.ts|SKIPPED|0|
-MEDIUM|src/utils/format.ts|SKIPPED|0|
-TEST|src/auth/login.test.ts|CONTEXT|1|
-
-## Bugs
-<!-- One line per confirmed bug. Format: BUG-ID|SEVERITY|FILE|LINES|ONE_LINE_DESCRIPTION -->
-BUG-3|Critical|src/auth/login.ts|45-52|JWT token not validated before use
-BUG-7|Medium|src/auth/login.ts|89|Password comparison uses timing-unsafe equality
-BUG-12|Low|src/api/users.ts|120-125|Missing null check on optional profile field
+**`.bug-hunter/coverage.json`:**
+```json
+{
+  "schemaVersion": 1,
+  "iteration": 1,
+  "status": "IN_PROGRESS",
+  "files": [
+    { "path": "src/auth/login.ts", "status": "done" },
+    { "path": "src/api/payments.ts", "status": "pending" }
+  ],
+  "bugs": [
+    { "bugId": "BUG-3", "severity": "Critical", "file": "src/auth/login.ts", "claim": "JWT token not validated before use" }
+  ],
+  "fixes": [
+    { "bugId": "BUG-3", "status": "MANUAL_REVIEW" }
+  ]
+}
 ```
+
+**`.bug-hunter/coverage.md`** is derived from the JSON artifact for humans.
 
 ## TODO.md task content for ralph_start
 
@@ -82,44 +80,46 @@ Use this as the `taskContent` parameter when calling `ralph_start`:
 ## Coverage Tasks
 - [ ] All CRITICAL files scanned
 - [ ] All HIGH files scanned
+- [ ] All MEDIUM files scanned
+- [ ] All LOW files scanned
 - [ ] Findings verified through Skeptic+Referee pipeline
 
 ## Completion
 - [ ] ALL_TASKS_COMPLETE
 
 ## Instructions
-1. Read .bug-hunter/coverage.md for previous iteration state
-2. Parse the Files table — collect all lines where STATUS is not DONE and TIER is CRITICAL or HIGH
+1. Read .bug-hunter/coverage.json for previous iteration state
+2. Parse the `files` array — collect all entries where `status` is not `done`
 3. Run bug-hunter pipeline on those files only
-4. Update coverage file: change STATUS to DONE, add BUG-IDs
-5. Output <promise>COMPLETE</promise> when all CRITICAL/HIGH files are DONE
+4. Update coverage JSON: change file status to `done`, append bug summaries, and render coverage.md
+5. Output <promise>COMPLETE</promise> only when all queued source files are DONE
 6. Otherwise call ralph_done to continue to the next iteration
 ```
 
 ## Coverage file validation
 
 At the start of each iteration, validate the coverage file:
-1. Check `SCHEMA_VERSION: 2` exists on line 2 — if missing, this is a v1 file; migrate by adding the header
-2. Parse the CHECKSUM field: `[file_lines]|[bug_lines]` — count actual lines in Files and Bugs sections
-3. If counts don't match the checksum, the file may be corrupted. Warn: "Coverage file checksum mismatch (expected X|Y, got A|B). Re-scanning affected files." Then set any files with mismatched data to STATUS=PARTIAL for re-scan.
-4. If the file fails to parse entirely (malformed lines, missing sections), rename it to `.bug-hunter/coverage.md.bak` and start fresh. Warn user.
-
-Update the CHECKSUM every time you write to the coverage file.
+1. Validate `.bug-hunter/coverage.json` against the local coverage schema.
+2. If validation fails, rename the bad file to `.bug-hunter/coverage.json.bak`
+   and start fresh. Warn the user.
+3. Always regenerate `.bug-hunter/coverage.md` from the JSON artifact after a
+   successful write.
 
 ## Iteration behavior
 
 Each iteration after the first:
-1. Read `.bug-hunter/coverage.md` — parse the Files table
-2. Collect all lines where STATUS != DONE and TIER is CRITICAL or HIGH
+1. Read `.bug-hunter/coverage.json`
+2. Collect all file entries where `status != "done"`
 3. If none remain → output `<promise>COMPLETE</promise>` (this ends the ralph-loop)
 4. Otherwise, run the pipeline on remaining files only (use small/parallel mode based on count)
-5. Update the coverage file: set STATUS to DONE for scanned files, append new bugs to the Bugs section
+5. Update `coverage.json`, then render `coverage.md`
 6. Increment ITERATION counter
 7. Call `ralph_done` to proceed to the next iteration
 
 ## Safety
 
-- Max 10 iterations by default (set via `ralph_start({ maxIterations: 10 })`)
+- Max iterations should scale with the queue size so autonomous runs do not stop early
 - Each iteration only scans NEW files — no re-scanning already-DONE files
 - User can stop anytime with ESC or `/ralph-stop`
-- All state is in `.bug-hunter/coverage.md` — fully resumable, machine-parseable
+- Canonical state is in `.bug-hunter/coverage.json`; `coverage.md` is derived
+  and fully resumable from that JSON

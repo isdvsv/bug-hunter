@@ -67,7 +67,7 @@ This is fast — no file reading, just directory listing and heuristic classific
 Process ONE domain at a time, running the **full pipeline** (Recon → Hunter → Skeptic → Referee) within each domain:
 
 ```
-For each domain (CRITICAL first, then HIGH, then MEDIUM):
+For each domain (CRITICAL first, then HIGH, then MEDIUM, then LOW):
   1. Get this domain's file list:
      - If triage exists: use triage.domainFileLists[domainPath]
      - If no triage: use fd/find to list files in this domain's directory
@@ -78,9 +78,9 @@ For each domain (CRITICAL first, then HIGH, then MEDIUM):
 
   Write domain results to:
     .bug-hunter/domains/<domain-name>/recon.md
-    .bug-hunter/domains/<domain-name>/findings.md
-    .bug-hunter/domains/<domain-name>/skeptic.md
-    .bug-hunter/domains/<domain-name>/referee.md
+    .bug-hunter/domains/<domain-name>/findings.json
+    .bug-hunter/domains/<domain-name>/skeptic.json
+    .bug-hunter/domains/<domain-name>/referee.json
 
   Record in state:
     node "$SKILL_DIR/scripts/bug-hunter-state.cjs" record-findings ...
@@ -123,7 +123,7 @@ Write boundary results to `.bug-hunter/domains/_boundaries/`.
 
 After all domains + boundaries are audited:
 
-1. Read all domain `referee.md` files and boundary results.
+1. Read all domain `referee.json` files and boundary results.
 2. Merge findings, deduplicate by file + line + claim.
 3. Renumber BUG-IDs globally.
 4. Build the final report per Step 7 in SKILL.md.
@@ -163,17 +163,16 @@ Use `.bug-hunter/state.json` with domain-aware structure:
 - Iteration N-1: Tier 3 merge and report
 - Iteration N: Coverage check → DONE or continue with missed domains
 
-The ralph-loop's coverage check reads the state file and only marks DONE when all CRITICAL and HIGH domains show status `done`.
+The ralph-loop's coverage check reads the state file and only marks DONE when all queued domains show status `done`.
 
-## Optimization: Skip LOW domains
+## Default autonomous behavior
 
-For truly huge codebases (1,000+ files), skip LOW-tier domains entirely unless `--exhaustive` is specified. UI components, test utilities, and formatting helpers rarely contain runtime bugs worth the context cost.
-
-Report skipped domains in the final report:
-```
-ℹ️ Skipped [N] LOW-tier domains ([M] files) for efficiency.
-Use `--exhaustive` to include all domains.
-```
+Autonomous mode is exhaustive by default:
+- Finish all CRITICAL domains first.
+- Then continue through HIGH domains.
+- Then continue through MEDIUM domains.
+- Then continue through LOW domains.
+- Only stop when the domain queue is exhausted, the user interrupts, or a hard blocker prevents safe progress.
 
 ## Optimization: Delta-first for repeat scans
 
@@ -209,4 +208,4 @@ When executing large-codebase mode:
 - [ ] Tier 3: Merge all domain + boundary findings
 - [ ] Tier 3: Deduplicate and renumber
 - [ ] Tier 3: Build final report with per-domain breakdown
-- [ ] Coverage: All CRITICAL/HIGH domains done? If not, continue.
+- [ ] Coverage: All queued domains done? If not, continue.

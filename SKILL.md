@@ -50,7 +50,7 @@ For large scans: process chunks sequentially with persistent state to avoid comp
 /bug-hunter --autonomous src/            # Alias for no-intervention auto-fix run
 /bug-hunter --fix -b feature-xyz        # Find + fix on branch diff
 /bug-hunter --fix --approve src/        # Find + fix, but ask before each fix
-/bug-hunter src/                         # Loops by default: audit until 100% coverage
+/bug-hunter src/                         # Loops by default: audit + fix until all queued source files are covered
 /bug-hunter --no-loop src/               # Single-pass only, no iterating
 /bug-hunter --no-loop --scan-only src/   # Single-pass scan, no fixes, no loop
 /bug-hunter --deps src/                 # Include dependency CVE scan
@@ -130,7 +130,7 @@ If triage was not run (e.g., Recon was called directly without the orchestrator)
 
 **File partitioning rules (Extended/Scaled modes):**
 - **Service-aware partitioning (preferred)**: If Recon detected multiple service boundaries (monorepo), partition by service.
-- **Risk-tier partitioning (fallback)**: process CRITICAL then HIGH then MEDIUM.
+- **Risk-tier partitioning (fallback)**: process CRITICAL then HIGH then MEDIUM then LOW.
 - Keep chunk size small (recommended 20-40 files) to avoid context compaction issues.
 - Persist chunk progress in `.bug-hunter/state.json` so restarts do not re-scan done chunks.
 - Test files (CONTEXT-ONLY) are included only when needed for intent.
@@ -296,7 +296,7 @@ Token estimate: ~[N] tokens for full pipeline
 ```
 ⚠️ This codebase has [N] source files (FILE_BUDGET: [B]).
 Single-pass mode will only cover a subset. Remove `--no-loop` to enable iterative coverage.
-Proceeding with partial scan — CRITICAL and HIGH domains only.
+Proceeding with partial scan — highest-priority queued files only.
 ```
 
 **Triage replaces Recon's FILE_BUDGET computation.** Recon still runs for tech stack identification and pattern-based analysis, but it no longer needs to count files or compute the context budget — triage already did that, for free.
@@ -362,8 +362,8 @@ read({ path: "$SKILL_DIR/prompts/hunter.md" })
 #    - Apply the security checklist sweep
 #    - Write each finding in BUG-N format
 
-# 3. Write your findings to disk:
-write({ path: ".bug-hunter/findings.md", content: "<your findings>" })
+# 3. Write your canonical findings artifact to disk:
+write({ path: ".bug-hunter/findings.json", content: "<your findings json>" })
 ```
 
 #### Example B: subagent dispatch
@@ -383,16 +383,16 @@ read({ path: "$SKILL_DIR/templates/subagent-wrapper.md" })
 #    - {RISK_MAP} = <risk map from .bug-hunter/recon.md>
 #    - {TECH_STACK} = <framework, auth, DB from Recon>
 #    - {PHASE_SPECIFIC_CONTEXT} = <doc-lookup instructions from doc-lookup.md>
-#    - {OUTPUT_FILE_PATH} = ".bug-hunter/findings.md"
+#    - {OUTPUT_FILE_PATH} = ".bug-hunter/findings.json"
 #    - {SKILL_DIR} = <absolute path>
 # 4. Dispatch:
 subagent({
   agent: "hunter-agent",
   task: "<the filled template>",
-  output: ".bug-hunter/findings.md"
+  output: ".bug-hunter/findings.json"
 })
 # 5. Read the output:
-read({ path: ".bug-hunter/findings.md" })
+read({ path: ".bug-hunter/findings.json" })
 ```
 
 When launching subagents, always pass `SKILL_DIR` explicitly in the task context so prompt commands like `node "$SKILL_DIR/scripts/doc-lookup.cjs"` resolve correctly. The `context7-api.cjs` script is kept as a fallback if `doc-lookup.cjs` fails.
@@ -491,30 +491,36 @@ In a collapsed `<details>` section (for transparency).
 - Skeptic accuracy: X/Y correct challenges (Z%)
 
 ### 7. Coverage assessment
-- If ALL CRITICAL/HIGH files scanned: "Full coverage achieved."
+- If ALL queued scannable source files scanned: "Full queued coverage achieved."
 - If any missed: list them with note about `--loop` mode.
 
 ### 7b. Coverage enforcement (mandatory)
 
-If the coverage assessment shows ANY CRITICAL or HIGH files were not scanned, the pipeline is NOT complete:
+If the coverage assessment shows ANY queued scannable source files were not scanned, the pipeline is NOT complete:
 
-1. If `LOOP_MODE=true` (default): the ralph-loop will automatically continue to the next iteration covering missed files. Call `ralph_done` to proceed to the next iteration. Do NOT output `<promise>COMPLETE</promise>` until all CRITICAL/HIGH files show DONE.
+1. If `LOOP_MODE=true` (default): the ralph-loop will automatically continue to the next iteration covering missed files. Call `ralph_done` to proceed to the next iteration. Do NOT output `<promise>COMPLETE</promise>` until all queued scannable source files show DONE.
 
 2. If `LOOP_MODE=false` (`--no-loop` was specified) AND missed files exist:
    - If total files ≤ FILE_BUDGET × 3: Output the report with a WARNING:
      ```
-     ⚠️ PARTIAL COVERAGE: [N] CRITICAL/HIGH files were not scanned.
+     ⚠️ PARTIAL COVERAGE: [N] queued source files were not scanned.
      Run `/bug-hunter [path]` for complete coverage (loop is on by default).
      Unscanned files: [list them]
      ```
    - If total files > FILE_BUDGET × 3: The report MUST include:
      ```
      🚨 LARGE CODEBASE: [N] source files (FILE_BUDGET: [B]).
-     Single-pass audit covered [X]% of CRITICAL/HIGH files.
+     Single-pass audit covered [X]% of queued source files.
      Use `/bug-hunter [path]` for full coverage (loop is on by default).
      ```
 
-3. Do NOT claim "audit complete" or "full coverage achieved" unless ALL CRITICAL and HIGH files have status DONE. A partial audit is still valuable — report what you found honestly.
+3. Do NOT claim "audit complete" or "full coverage achieved" unless ALL queued scannable source files have status DONE. A partial audit is still valuable — report what you found honestly.
+
+4. Autonomous runs must keep descending through the remaining priority queue after the current prioritized chunk is done:
+   - Finish current CRITICAL/HIGH work first.
+   - Immediately continue with remaining MEDIUM files.
+   - Then continue with remaining LOW files.
+   - Only stop when the queue is exhausted, the user interrupts, or a hard blocker prevents safe progress.
 
 If zero bugs were confirmed, say so clearly — a clean report is a good result.
 
@@ -577,7 +583,12 @@ Rules for JSON output:
 - `dependencies` array: populated only if `--deps` was used and `.bug-hunter/dep-findings.json` exists.
 - This JSON enables CI/CD gating, dashboard ingestion, and downstream patch generation.
 
-Also write the final markdown report to `.bug-hunter/report.md` as the canonical human-readable output (in addition to displaying it to the user).
+Also write the final markdown report to `.bug-hunter/report.md` as the
+canonical human-readable output. Generate it from the JSON artifacts with:
+
+```bash
+node "$SKILL_DIR/scripts/render-report.cjs" report ".bug-hunter/findings.json" ".bug-hunter/referee.json" > ".bug-hunter/report.md"
+```
 
 ---
 

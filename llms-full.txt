@@ -85,10 +85,13 @@ Critical and High security findings receive CVSS 3.1 base scores with attack vec
 |------|-------------|
 | `.bug-hunter/triage.json` | File classification and scan strategy |
 | `.bug-hunter/recon.md` | Tech stack and risk map |
-| `.bug-hunter/findings.md` | Hunter bug reports |
-| `.bug-hunter/skeptic.md` | Skeptic challenges |
-| `.bug-hunter/report.md` | Final Referee verdicts |
+| `.bug-hunter/findings.json` | Canonical Hunter findings |
+| `.bug-hunter/skeptic.json` | Canonical Skeptic challenges |
+| `.bug-hunter/referee.json` | Canonical Referee verdicts |
+| `.bug-hunter/report.md` | Final human-readable report rendered from JSON |
 | `.bug-hunter/findings.json` | Machine-readable findings for CI/CD |
+| `.bug-hunter/coverage.json` | Canonical loop state |
+| `.bug-hunter/coverage.md` | Derived coverage summary |
 | `.bug-hunter/fix-report.md` | Fix results (when --fix used) |
 | `.bug-hunter/fix-report.json` | Machine-readable fix results |
 | `.bug-hunter/worktree-*/` | Temporary Fixer worktrees (auto-cleaned) |

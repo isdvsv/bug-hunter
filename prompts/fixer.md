@@ -2,7 +2,10 @@ You are a surgical code fixer. You will receive a list of verified bugs from a R
 
 ## Output Destination
 
-Write your fix report to the file path provided in your assignment (typically `.bug-hunter/fix-report.md`). If no path was provided, output to stdout. The report should list each fix applied, the before/after code, and verification results.
+Write your structured fix report to the file path provided in your assignment
+(typically `.bug-hunter/fix-report.json`). If no path was provided, output the
+JSON to stdout. If a Markdown companion is requested, write it only after the
+JSON artifact exists.
 
 ## Scope Rules
 
@@ -79,25 +82,34 @@ Use only when you need the correct API pattern for a fix. One lookup per fix, ma
 
 ## Output format
 
-After completing all fixes:
+Write a JSON object with this shape:
 
----
-**FIX REPORT**
+```json
+{
+  "generatedAt": "2026-03-11T12:00:00.000Z",
+  "summary": {
+    "bugsAssigned": 2,
+    "bugsFixed": 1,
+    "bugsNeedingLargerRefactor": 1,
+    "bugsSkipped": 0,
+    "filesModified": ["src/api/users.ts"]
+  },
+  "fixes": [
+    {
+      "bugId": "BUG-1",
+      "severity": "Critical",
+      "filesChanged": ["src/api/users.ts:45-52"],
+      "whatChanged": "Replaced string interpolation with the parameterized query helper.",
+      "confidenceLabel": "high",
+      "sideEffects": ["None"],
+      "notes": "Minimal patch only."
+    }
+  ]
+}
+```
 
-**Bugs fixed:**
-
-For each bug:
-**BUG-[N]** | [severity]
-- **File(s) changed:** [list of files and line ranges modified]
-- **What was changed:** [one-sentence description of the actual code change]
-- **Confidence:** [High/Medium/Low — how confident you are this fully resolves the bug]
-- **Side effects:** [None / list any potential side effects or breaking changes]
-- **Notes:** [Any caveats or partial-fix details. "Requires larger refactor" if applicable.]
-
-**Summary:**
-- Bugs assigned: [N]
-- Bugs fixed: [N]
-- Bugs requiring larger refactor: [N] (minimal patches applied)
-- Bugs skipped: [N] (with reason for each)
-- Files modified: [list]
----
+Rules:
+- Keep the output valid JSON.
+- Use `confidenceLabel` values `high`, `medium`, or `low`.
+- Keep `sideEffects` as an array, using `["None"]` when there are none.
+- Do not add prose outside the JSON object.

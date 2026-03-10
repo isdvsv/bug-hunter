@@ -260,7 +260,9 @@ Use exact fixed scope from the real base commit:
 2. Build changed hunks list.
 3. Run one lightweight Hunter on changed hunks only with a **severity floor of MEDIUM**:
    - Only report fixer-introduced bugs at MEDIUM severity or above.
-   - LOW-severity issues from the fixer are logged to `.bug-hunter/fix-report.md` as informational notes but do NOT trigger `FIXER_BUG` status.
+   - LOW-severity issues from the fixer are logged in `.bug-hunter/fix-report.json`
+     (and optional derived `.bug-hunter/fix-report.md`) as informational notes
+     but do NOT trigger `FIXER_BUG` status.
 
 This removes ambiguity from `<base-branch>` and works for path scans, staged scans, and branch scans.
 
@@ -373,6 +375,18 @@ Write `.bug-hunter/fix-report.json` alongside the markdown report:
     "partial": 0
   }
 }
+```
+
+Validate it immediately:
+
+```bash
+node "$SKILL_DIR/scripts/schema-validate.cjs" fix-report ".bug-hunter/fix-report.json"
+```
+
+Render the Markdown companion when humans need it:
+
+```bash
+node "$SKILL_DIR/scripts/render-report.cjs" fix-report ".bug-hunter/fix-report.json" > ".bug-hunter/fix-report.md"
 ```
 
 Rules:

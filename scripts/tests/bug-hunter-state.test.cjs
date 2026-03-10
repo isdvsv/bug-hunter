@@ -49,8 +49,32 @@ test('bug-hunter-state init/mark/hash/filter/record works end-to-end', () => {
 
   const findingsJson = path.join(sandbox, 'findings.json');
   writeJson(findingsJson, [
-    { bugId: 'BUG-1', severity: 'Low', file: 'src/x.ts', lines: '1', claim: 'x' },
-    { bugId: 'BUG-2', severity: 'Critical', file: 'src/x.ts', lines: '1', claim: 'x' }
+    {
+      bugId: 'BUG-1',
+      severity: 'Low',
+      category: 'logic',
+      file: 'src/x.ts',
+      lines: '1',
+      claim: 'x',
+      evidence: 'src/x.ts:1 first evidence',
+      runtimeTrigger: 'Call x()',
+      crossReferences: ['Single file'],
+      confidenceScore: 40
+    },
+    {
+      bugId: 'BUG-2',
+      severity: 'Critical',
+      category: 'security',
+      file: 'src/x.ts',
+      lines: '1',
+      claim: 'x',
+      evidence: 'src/x.ts:1 upgraded evidence',
+      runtimeTrigger: 'Call x() with attacker-controlled input',
+      crossReferences: ['Single file'],
+      confidenceScore: 95,
+      stride: 'Tampering',
+      cwe: 'CWE-20'
+    }
   ]);
   const recorded = runJson('node', [stateScript, 'record-findings', statePath, findingsJson, 'test']);
   assert.equal(recorded.inserted, 1);
@@ -64,7 +88,8 @@ test('bug-hunter-state init/mark/hash/filter/record works end-to-end', () => {
 
   const state = readJson(statePath);
   assert.equal(state.bugLedger[0].severity, 'Critical');
-  assert.equal(state.metrics.lowConfidenceFindings, 1);
+  assert.equal(state.bugLedger[0].confidenceScore, 95);
+  assert.equal(state.metrics.lowConfidenceFindings, 0);
 
   const extraFile = path.join(sandbox, 'c.ts');
   fs.writeFileSync(extraFile, 'const c = 3;\n', 'utf8');
@@ -84,4 +109,44 @@ test('bug-hunter-state init/mark/hash/filter/record works end-to-end', () => {
   assert.equal(factCardResult.ok, true);
   const updatedState = readJson(statePath);
   assert.equal(updatedState.factCards['chunk-1'].apiContracts.length, 1);
+});
+
+test('bug-hunter-state rejects malformed findings artifacts', () => {
+  const sandbox = makeSandbox('bug-hunter-state-invalid-');
+  const stateScript = resolveSkillScript('bug-hunter-state.cjs');
+  const filePath = path.join(sandbox, 'a.ts');
+  fs.writeFileSync(filePath, 'const a = 1;\n', 'utf8');
+
+  const filesJson = path.join(sandbox, 'files.json');
+  writeJson(filesJson, [filePath]);
+  const statePath = path.join(sandbox, 'state.json');
+  runJson('node', [stateScript, 'init', statePath, 'extended', filesJson, '1']);
+
+  const findingsJson = path.join(sandbox, 'findings.json');
+  writeJson(findingsJson, [
+    {
+      bugId: 'BUG-1',
+      severity: 'Low',
+      category: 'logic',
+      file: 'src/x.ts',
+      lines: '1',
+      evidence: 'src/x.ts:1 evidence',
+      runtimeTrigger: 'Call x()',
+      crossReferences: ['Single file'],
+      confidenceScore: 40
+    }
+  ]);
+
+  const result = require('node:child_process').spawnSync('node', [
+    stateScript,
+    'record-findings',
+    statePath,
+    findingsJson,
+    'test'
+  ], {
+    encoding: 'utf8'
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stderr}${result.stdout}`, /Invalid findings artifact/);
 });

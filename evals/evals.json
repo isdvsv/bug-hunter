@@ -157,7 +157,7 @@
     {
       "id": 6,
       "prompt": "/bug-hunter --loop src/",
-      "expected_output": "Loop mode for thorough coverage. Should create ralph-loop state files, iterate the pipeline until all CRITICAL and HIGH files are scanned, track coverage in .claude/bug-hunter-coverage.md, and mark ALL_TASKS_COMPLETE when done.",
+      "expected_output": "Loop mode for thorough coverage. Should create ralph-loop state files, iterate the pipeline until all queued scannable source files are scanned, track canonical coverage in .bug-hunter/coverage.json, render .bug-hunter/coverage.md from it, and mark ALL_TASKS_COMPLETE when done.",
       "files": [],
       "assertions": [
         {
@@ -165,11 +165,11 @@
           "type": "content_check"
         },
         {
-          "text": "Creates or updates .claude/bug-hunter-coverage.md with machine-parseable format",
+          "text": "Creates or updates .bug-hunter/coverage.json as the canonical loop state and renders .bug-hunter/coverage.md from it",
           "type": "content_check"
         },
         {
-          "text": "Tracks file coverage status (DONE, PARTIAL, SKIPPED) per iteration",
+          "text": "Tracks file coverage status per iteration in coverage.json",
           "type": "content_check"
         },
         {
@@ -177,7 +177,7 @@
           "type": "content_check"
         },
         {
-          "text": "Marks ALL_TASKS_COMPLETE when all CRITICAL and HIGH files show DONE",
+          "text": "Marks ALL_TASKS_COMPLETE only when all queued scannable files show done",
           "type": "content_check"
         }
       ]

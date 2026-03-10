@@ -6,7 +6,10 @@ This is NOT a degraded mode. The skill is designed to work fully here.
 
 ## How It Works
 
-You (the orchestrating agent) play each role yourself, sequentially. Between phases you **write outputs to files** so later phases can reference them without holding everything in working memory.
+You (the orchestrating agent) play each role yourself, sequentially. Between
+phases you write canonical JSON artifacts so later phases can reference them
+without holding everything in working memory. Markdown reports are derived from
+those JSON files when humans need them.
 
 All state files go in `.bug-hunter/` relative to the working directory.
 
@@ -26,7 +29,9 @@ All state files go in `.bug-hunter/` relative to the working directory.
    - Use `triage.scanOrder` as the file order for Phase B.
    - Recon's remaining job: read 3-5 key files from CRITICAL domains to identify **tech stack** (framework, auth mechanism, database, key dependencies) and **trust boundary patterns** (how routes are defined, how auth middleware is applied, etc.).
    - If git is available, check recently changed files with `git log`.
-   - Write your Recon output to `.bug-hunter/recon.md` — include the tech stack, patterns, and the triage-provided risk map.
+   - Write your Recon output to `.bug-hunter/recon.json` if structured output is
+     requested; otherwise keep `.bug-hunter/recon.md` as a temporary fallback
+     until the Recon prompt is migrated.
 
 3. **If `.bug-hunter/triage.json` does NOT exist** (fallback — Recon called directly):
    - Execute the full Recon instructions: discover files, classify, compute FILE_BUDGET.
@@ -44,12 +49,16 @@ All state files go in `.bug-hunter/` relative to the working directory.
 2. Read `SKILL_DIR/prompts/doc-lookup.md` with the Read tool.
 3. **Switch mindset**: you are now a Bug Hunter. Your ONLY job is to find behavioral bugs.
 4. Execute the Hunter instructions yourself:
-   - Read files in risk-map order: CRITICAL → HIGH → MEDIUM.
+   - Read files in risk-map order: CRITICAL → HIGH → MEDIUM → LOW.
    - For each file, use the Read tool. Do NOT rely on memory from earlier phases.
    - Apply the mandatory security checklist sweep (Phase 3 in hunter.md) on every CRITICAL and HIGH file.
    - Track which files you actually read — be honest about coverage.
    - For each bug found, record it in the exact BUG-N format specified in hunter.md.
-5. Write your complete findings to `.bug-hunter/findings.md`.
+5. Write your complete findings to `.bug-hunter/findings.json`.
+6. Validate the artifact immediately:
+   ```bash
+   node "$SKILL_DIR/scripts/schema-validate.cjs" findings ".bug-hunter/findings.json"
+   ```
 
 **Context management:** If you notice earlier files becoming hazy in your memory:
 - STOP expanding to new files.
@@ -84,9 +93,10 @@ If the Recon risk map contains more files than FILE_BUDGET, do NOT try to read t
       ```bash
       node "$SKILL_DIR/scripts/bug-hunter-state.cjs" mark-chunk ".bug-hunter/state.json" "<chunk-id>" done
       ```
-3. After all chunks: merge findings from `.bug-hunter/state.json` into `.bug-hunter/findings.md`.
+3. After all chunks: merge findings from `.bug-hunter/state.json` into
+   `.bug-hunter/findings.json`.
 
-**Gap-fill:** After scanning, compare FILES SCANNED against the risk map. If any CRITICAL or HIGH files are in FILES SKIPPED, read them now and append any new findings. If you truly cannot read them (context exhaustion), leave them in FILES SKIPPED.
+**Gap-fill:** After scanning, compare FILES SCANNED against the risk map. If any queued scannable files are in FILES SKIPPED, read them now in priority order (CRITICAL → HIGH → MEDIUM → LOW) and append any new findings. If you truly cannot read them (context exhaustion), leave them in FILES SKIPPED so loop mode can resume them next.
 
 If TOTAL FINDINGS: 0, skip Phases C and D. Go directly to Step 7 (Final Report) in SKILL.md.
 
@@ -95,7 +105,7 @@ If TOTAL FINDINGS: 0, skip Phases C and D. Go directly to Step 7 (Final Report) 
 1. Read `SKILL_DIR/prompts/skeptic.md` with the Read tool.
 2. Read `SKILL_DIR/prompts/doc-lookup.md` with the Read tool.
 3. **Switch mindset completely**: you are now the Skeptic. Your job is to DISPROVE false positives. Forget the pride of finding them — you want to kill weak claims.
-4. Read `.bug-hunter/findings.md` to get the findings list.
+4. Read `.bug-hunter/findings.json` to get the findings list.
 5. For EACH finding:
    - Re-read the actual code at the reported file and line with the Read tool. This is MANDATORY — do not evaluate from memory.
    - Read all cross-referenced files.
@@ -103,7 +113,12 @@ If TOTAL FINDINGS: 0, skip Phases C and D. Go directly to Step 7 (Final Report) 
    - Check framework/middleware protections the Hunter may have missed.
    - Apply the risk calculation: `EV = (confidence% × points) - ((100 - confidence%) × 2 × points)`. Only DISPROVE when EV is positive (confidence > 67%).
    - For Critical bugs: need >67% confidence AND all cross-references read.
-6. Write your complete Skeptic output to `.bug-hunter/skeptic.md` in the format from skeptic.md.
+6. Write your complete Skeptic output to `.bug-hunter/skeptic.json` in the
+   format from skeptic.md.
+7. Validate it immediately:
+   ```bash
+   node "$SKILL_DIR/scripts/schema-validate.cjs" skeptic ".bug-hunter/skeptic.json"
+   ```
 
 **Important:** When switching from Hunter to Skeptic, genuinely try to disprove your own findings. The point of this phase is adversarial review. If you cannot genuinely argue against a finding, ACCEPT it and move on — do not waste time rubber-stamping.
 
@@ -111,13 +126,21 @@ If TOTAL FINDINGS: 0, skip Phases C and D. Go directly to Step 7 (Final Report) 
 
 1. Read `SKILL_DIR/prompts/referee.md` with the Read tool.
 2. **Switch mindset**: you are the impartial Referee. You trust neither the Hunter nor the Skeptic.
-3. Read both `.bug-hunter/findings.md` and `.bug-hunter/skeptic.md`.
+3. Read both `.bug-hunter/findings.json` and `.bug-hunter/skeptic.json`.
 4. For each finding:
    - **Tier 1 (all Critical + top 15 by severity):** Re-read the actual code yourself a THIRD time using the Read tool. Construct the runtime trigger independently. Make your own judgment.
    - **Tier 2 (remaining):** Evaluate evidence quality. Whose code quotes are more specific? Whose runtime trigger is more concrete?
 5. Make final REAL BUG / NOT A BUG verdicts with severity calibration.
-6. Write the final Referee report to `.bug-hunter/referee.md`.
-7. Proceed to Step 7 (Final Report) in SKILL.md.
+6. Write the final Referee verdicts to `.bug-hunter/referee.json`.
+7. Validate them immediately:
+   ```bash
+   node "$SKILL_DIR/scripts/schema-validate.cjs" referee ".bug-hunter/referee.json"
+   ```
+8. Render `.bug-hunter/report.md` from the JSON artifacts:
+   ```bash
+   node "$SKILL_DIR/scripts/render-report.cjs" report ".bug-hunter/findings.json" ".bug-hunter/referee.json" > ".bug-hunter/report.md"
+   ```
+9. Proceed to Step 7 (Final Report) in SKILL.md.
 
 ## State Files Summary
 
@@ -125,10 +148,11 @@ After a complete local-sequential run, these files should exist:
 
 | File | Phase | Content |
 |------|-------|---------|
-| `.bug-hunter/recon.md` | A | Risk map, file metrics, tech stack |
-| `.bug-hunter/findings.md` | B | All Hunter findings in BUG-N format |
-| `.bug-hunter/skeptic.md` | C | Skeptic challenges and decisions |
-| `.bug-hunter/referee.md` | D | Final verdicts and confirmed bugs |
+| `.bug-hunter/recon.json` | A | Recon artifact when structured output is used |
+| `.bug-hunter/findings.json` | B | All Hunter findings in canonical JSON |
+| `.bug-hunter/skeptic.json` | C | Skeptic challenges in canonical JSON |
+| `.bug-hunter/referee.json` | D | Final verdicts in canonical JSON |
+| `.bug-hunter/report.md` | D | Human-readable report rendered from JSON |
 | `.bug-hunter/state.json` | B (chunked) | Chunk progress, findings ledger |
 | `.bug-hunter/source-files.json` | A | Source file list (for state init) |
 
@@ -136,8 +160,8 @@ After a complete local-sequential run, these files should exist:
 
 After Phase D, check coverage:
 
-- If all CRITICAL and HIGH files were scanned: proceed to Final Report.
-- If any CRITICAL/HIGH files were skipped:
-  - If `--loop` mode: the ralph-loop will iterate and cover them next.
-  - If not `--loop`: include a coverage WARNING in the Final Report and recommend `--loop`.
-- Do NOT claim "full coverage" or "audit complete" unless every CRITICAL and HIGH file was actually read with the Read tool and has status DONE.
+- If all queued scannable source files were scanned: proceed to Final Report.
+- If any queued scannable files were skipped:
+  - If `--loop` mode: the ralph-loop must iterate and cover the remaining queue next.
+  - If not `--loop`: include a coverage WARNING in the Final Report and recommend loop mode.
+- Do NOT claim "full coverage" or "audit complete" unless every queued scannable source file was actually read with the Read tool and has status DONE.

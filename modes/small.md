@@ -33,12 +33,12 @@ Report architecture summary to user.
 Dispatch Hunter using the standard dispatch pattern (see `_dispatch.md`, role=`hunter`).
 
 Pass to the Hunter:
-- File list in risk-map order (CRITICAL → HIGH → MEDIUM). If triage exists, use `triage.scanOrder`.
+- File list in risk-map order (CRITICAL → HIGH → MEDIUM → LOW). If triage exists, use `triage.scanOrder`.
 - Risk map from Recon (or triage).
 - Tech stack from Recon.
 - `doc-lookup.md` contents as phase-specific context.
 
-After completion, read `.bug-hunter/findings.md`.
+After completion, read `.bug-hunter/findings.json`.
 
 If TOTAL FINDINGS: 0, skip Skeptic and Referee. Go to Step 7 (Final Report) in SKILL.md.
 
@@ -48,11 +48,11 @@ If TOTAL FINDINGS: 0, skip Skeptic and Referee. Go to Step 7 (Final Report) in S
 
 Compare the Hunter's FILES SCANNED list against the risk map.
 
-If any CRITICAL or HIGH files appear in FILES SKIPPED:
+If any queued scannable files appear in FILES SKIPPED:
 
-**local-sequential:** Read the missed files yourself now and scan them for bugs. Append new findings to `.bug-hunter/findings.md`.
+**local-sequential:** Read the missed files yourself now in priority order (CRITICAL → HIGH → MEDIUM → LOW) and scan them for bugs. Append new findings to `.bug-hunter/findings.json`.
 
-**subagent/teams:** Launch a second Hunter on ONLY the missed files using the standard dispatch pattern. Merge gap findings into `.bug-hunter/findings.md`.
+**subagent/teams:** Launch a second Hunter on ONLY the missed files using the standard dispatch pattern. Merge gap findings into `.bug-hunter/findings.json`.
 
 ---
 
@@ -61,11 +61,11 @@ If any CRITICAL or HIGH files appear in FILES SKIPPED:
 Dispatch Skeptic using the standard dispatch pattern (see `_dispatch.md`, role=`skeptic`).
 
 Pass to the Skeptic:
-- Hunter findings from `.bug-hunter/findings.md` (compact format: bugId, severity, file, lines, claim, evidence, runtimeTrigger).
+- Hunter findings from `.bug-hunter/findings.json`.
 - Tech stack from Recon.
 - `doc-lookup.md` contents as phase-specific context.
 
-After completion, read `.bug-hunter/skeptic.md`.
+After completion, read `.bug-hunter/skeptic.json`.
 
 ---
 
@@ -74,13 +74,13 @@ After completion, read `.bug-hunter/skeptic.md`.
 Dispatch Referee using the standard dispatch pattern (see `_dispatch.md`, role=`referee`).
 
 Pass to the Referee:
-- Hunter findings from `.bug-hunter/findings.md`.
-- Skeptic challenges from `.bug-hunter/skeptic.md`.
+- Hunter findings from `.bug-hunter/findings.json`.
+- Skeptic challenges from `.bug-hunter/skeptic.json`.
 
-After completion, read `.bug-hunter/referee.md`.
+After completion, read `.bug-hunter/referee.json`.
 
 ---
 
 ## After Step 7
 
-Proceed to **Step 7** (Final Report) in SKILL.md. The Referee output in `.bug-hunter/referee.md` provides the confirmed bugs table, dismissed findings, and coverage stats needed for the final report.
+Proceed to **Step 7** (Final Report) in SKILL.md. The Referee output in `.bug-hunter/referee.json` plus the rendered `.bug-hunter/report.md` provide the confirmed bugs table, dismissed findings, and coverage stats needed for the final report.

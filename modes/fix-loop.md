@@ -17,58 +17,56 @@ When `LOOP_MODE=true` AND `FIX_MODE=true`, before running the first pipeline ite
 2. Call the `ralph_start` tool:
 
 ```
+MAX_FIX_LOOP_ITERATIONS = max(
+  15,
+  min(250, ceil(SCANNABLE_FILES / max(FILE_BUDGET, 1)) + ELIGIBLE_BUG_COUNT + 8)
+)
+
 ralph_start({
   name: "bug-hunter-fix-audit",
   taskContent: <the TODO.md content below>,
-  maxIterations: 15
+  maxIterations: MAX_FIX_LOOP_ITERATIONS
 })
 ```
 
 3. The ralph-loop system will then drive iteration. Each iteration:
    - You receive the task prompt with the current checklist state.
    - You execute one iteration of find + fix.
-   - You update `.bug-hunter/coverage.md` with results.
-   - If all bugs are FIXED and all CRITICAL/HIGH files are DONE → output `<promise>COMPLETE</promise>`.
+   - You update `.bug-hunter/coverage.json` with results and render `.bug-hunter/coverage.md`.
+   - If all bugs are FIXED and all queued scannable source files are DONE → output `<promise>COMPLETE</promise>`.
    - Otherwise → call `ralph_done` to proceed to the next iteration.
 
 **Do NOT manually loop or re-invoke yourself.** The ralph-loop system handles iteration automatically.
 
 ## Coverage file extension for fix mode
 
-The `.bug-hunter/coverage.md` file gains additional sections:
+The `.bug-hunter/coverage.json` file carries the same loop state, plus fix
+entries:
 
-```markdown
-## Fixes
-<!-- One line per bug. LATEST entry per BUG-ID is current status. -->
-<!-- Format: BUG-ID|STATUS|ITERATION_FIXED|FILES_MODIFIED -->
-<!-- STATUS: FIXED | FIX_REVERTED | FIX_FAILED | PARTIAL | FIX_CONFLICT | SKIPPED | FIXER_BUG -->
-BUG-3|FIXED|1|src/auth/login.ts
-BUG-7|FIXED|1|src/auth/login.ts
-BUG-12|FIXED|2|src/api/users.ts
-
-## Test Results
-<!-- One line per iteration. Format: ITERATION|PASSED|FAILED|NEW_FAILURES|RESOLVED -->
-1|45|3|2|0
-2|47|1|0|1
+```json
+{
+  "fixes": [
+    { "bugId": "BUG-3", "status": "FIXED" },
+    { "bugId": "BUG-12", "status": "FIX_FAILED" }
+  ]
+}
 ```
-
-**Parsing rule:** For each BUG-ID, use the LAST entry in the Fixes section. Earlier entries for the same BUG-ID are history — only the latest matters.
 
 ## Loop iteration logic
 
 ```
 For each iteration:
-  1. Read coverage file
-  2. Collect (using LAST entry per BUG-ID):
-     - Unfixed bugs: latest STATUS in {FIX_REVERTED, FIX_FAILED, FIX_CONFLICT, SKIPPED, FIXER_BUG}
-     - Unscanned files: STATUS != DONE in Files section (CRITICAL/HIGH only)
+  1. Read coverage.json
+  2. Collect:
+     - Unfixed bugs: latest fix status in {FIX_REVERTED, FIX_FAILED, FIX_CONFLICT, SKIPPED, FIXER_BUG, MANUAL_REVIEW}
+     - Unscanned files: file status != done
   3. If unfixed bugs exist OR unscanned files exist:
      a. If unscanned files -> run Phase 1 (find pipeline) on them -> get new confirmed bugs
      b. Combine: unfixed bugs + newly confirmed bugs
      c. Run Phase 2 (fix + verify) on combined list
-     d. Update coverage file (append new entries to Fixes section)
+     d. Update coverage.json and re-render coverage.md
      e. Call ralph_done to proceed to next iteration
-  4. If all bugs FIXED and all CRITICAL/HIGH files DONE:
+  4. If all bugs FIXED and all queued scannable source files are DONE:
      -> Run final test suite one more time
      -> If no new failures:
         Output <promise>COMPLETE</promise>
@@ -87,6 +85,8 @@ Use this as the `taskContent` parameter when calling `ralph_start`:
 ## Discovery Tasks
 - [ ] All CRITICAL files scanned
 - [ ] All HIGH files scanned
+- [ ] All MEDIUM files scanned
+- [ ] All LOW files scanned
 - [ ] Findings verified through Skeptic+Referee pipeline
 
 ## Fix Tasks
@@ -100,13 +100,13 @@ Use this as the `taskContent` parameter when calling `ralph_start`:
 - [ ] ALL_TASKS_COMPLETE
 
 ## Instructions
-1. Read .bug-hunter/coverage.md for previous iteration state
-2. Parse Files table — collect unscanned CRITICAL/HIGH files
-3. Parse Fixes table — collect unfixed bugs (latest entry not FIXED)
+1. Read .bug-hunter/coverage.json for previous iteration state
+2. Parse the `files` array — collect unscanned CRITICAL/HIGH/MEDIUM/LOW files
+3. Parse the `fixes` array — collect unfixed bugs (latest entry not FIXED)
 4. If unscanned files exist: run Phase 1 (find pipeline) on them
 5. If unfixed bugs exist: run Phase 2 (fix pipeline) on them
-6. Update coverage file with results
-7. Output <promise>COMPLETE</promise> when all bugs are FIXED and no new test failures
+6. Update coverage.json with results and render coverage.md
+7. Output <promise>COMPLETE</promise> only when all queued files are DONE, all discovered bugs are FIXED, and no new test failures remain
 8. Otherwise call ralph_done to continue to the next iteration
 ```
 

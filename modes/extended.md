@@ -35,7 +35,7 @@ After Recon completes, read `.bug-hunter/recon.md` to extract the risk map and t
 
 Partition files from `triage.scanOrder` (or the Recon risk map if no triage) into chunks:
 - **Service-aware partitioning (preferred):** If triage detected multiple domains, partition by domain.
-- **Risk-tier partitioning (fallback):** Process CRITICAL files first, then HIGH, then MEDIUM.
+- **Risk-tier partitioning (fallback):** Process CRITICAL files first, then HIGH, then MEDIUM, then LOW.
 - Chunk size: FILE_BUDGET ÷ 2 files per chunk (keep chunks small to avoid compaction).
 - Keep same-directory files together when possible.
 
@@ -67,7 +67,7 @@ For each chunk:
 
 ### 5d. Merge all findings
 
-After all chunks complete, merge findings from state into `.bug-hunter/findings.md`.
+After all chunks complete, merge findings from state into `.bug-hunter/findings.json`.
 
 If TOTAL FINDINGS: 0, skip Skeptic and Referee. Go to Step 7 (Final Report) in SKILL.md.
 

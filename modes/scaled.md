@@ -45,7 +45,7 @@ For each chunk: dispatch Hunter, record findings, mark done — same pattern as 
 ### 5c. Cross-chunk consistency
 
 After all chunks complete:
-1. Merge findings from state into `.bug-hunter/findings.md`.
+1. Merge findings from state into `.bug-hunter/findings.json`.
 2. Run consistency check: look for duplicate BUG-IDs across chunks and conflicting claims on the same file/line.
 3. Resolve conflicts: keep the finding with the stronger evidence.
 
@@ -73,4 +73,4 @@ Pass merged Hunter findings + Skeptic challenges.
 
 Proceed to **Step 7** (Final Report) in SKILL.md.
 
-If `--loop` was specified and coverage is incomplete, the ralph-loop will iterate to cover remaining files.
+If `--loop` was specified and coverage is incomplete, the ralph-loop will iterate to cover the remaining queued files until the queue is exhausted or the user interrupts.

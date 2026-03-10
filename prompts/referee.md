@@ -6,7 +6,10 @@ You will receive both the Hunter findings file and the Skeptic challenges file. 
 
 ## Output Destination
 
-Write your complete Referee verdict report to the file path provided in your assignment (typically `.bug-hunter/referee.md`). If no path was provided, output to stdout. This is the FINAL phase — your verdicts determine which bugs are confirmed.
+Write your canonical Referee verdict artifact as JSON to the file path provided
+in your assignment (typically `.bug-hunter/referee.json`). If no path was
+provided, output the JSON to stdout. If a Markdown report is requested, render
+it from this JSON artifact after writing the canonical file.
 
 ## Scope Rules
 
@@ -56,20 +59,38 @@ Before final report: (1) Coverage — did you evaluate every BUG-ID from both re
 
 ## Output format
 
-Per bug:
+Write a JSON array. Each item must match this contract:
+
+```json
+[
+  {
+    "bugId": "BUG-1",
+    "verdict": "REAL_BUG",
+    "trueSeverity": "Critical",
+    "confidenceScore": 94,
+    "confidenceLabel": "high",
+    "verificationMode": "INDEPENDENTLY_VERIFIED",
+    "analysisSummary": "Confirmed by tracing user-controlled input into an unsafe sink without validation.",
+    "suggestedFix": "Validate the input before building the query and use the parameterized helper."
+  }
+]
 ```
-**BUG-N** | Verification: INDEPENDENTLY VERIFIED / EVIDENCE-BASED
-- **Hunter's claim:** [summary]
-- **Skeptic's response:** DISPROVE/ACCEPT [summary]
-- **My analysis:** [what you traced and found]
-- **VERDICT: REAL BUG / NOT A BUG** | Confidence: High/Medium/Low
-- **True severity:** [Critical/Medium/Low] (if changed, explain)
-- **Suggested fix:** [concrete: function name, check to add, line to change]
-```
+
+Rules:
+- `verdict` must be one of `REAL_BUG`, `NOT_A_BUG`, or `MANUAL_REVIEW`.
+- `confidenceScore` must be numeric on a `0-100` scale.
+- `confidenceLabel` must be `high`, `medium`, or `low`.
+- `verificationMode` must be `INDEPENDENTLY_VERIFIED` or `EVIDENCE_BASED`.
+- Keep the reasoning in `analysisSummary`; do not emit free-form prose outside
+  the JSON array.
+- Return `[]` only when there were no findings to referee.
 
 ### Security enrichment (confirmed security bugs only)
 
-For each finding with `category: security` that you confirm as REAL BUG, add these fields below the verdict:
+For each finding with `category: security` that you confirm as `REAL_BUG`,
+include the security enrichment details in `analysisSummary` and
+`suggestedFix`. Until the schema grows extra typed security fields, do not emit
+out-of-contract keys.
 
 **Reachability** (required for all security findings):
 - `EXTERNAL` — reachable from unauthenticated external input (public API, form, URL)
@@ -111,12 +132,5 @@ Non-security findings use the standard verdict format above (no enrichment neede
 
 ## Final Report
 
-**VERIFIED BUG REPORT**
-
-Stats: Total reported | Dismissed | Confirmed (Critical/Medium/Low) | Independently verified vs Evidence-based | Per-Hunter accuracy (if parallel) | Skeptic accuracy
-
-Confirmed bugs table: # | Severity | STRIDE | CWE | Reachability | File | Lines | Description | Fix | Verification
-
-Low-confidence items (flagged for manual review): file + one-line uncertainty reason.
-
-<details><summary>Dismissed findings</summary>Table: # | Claim | Skeptic Position | Reason</details>
+If a human-readable report is requested, generate it from the final JSON array.
+The JSON artifact remains canonical.

@@ -3,6 +3,7 @@
 const childProcess = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { validateArtifactFile, validateArtifactValue } = require('./schema-runtime.cjs');
 
 const BACKEND_PRIORITY = ['spawn_agent', 'subagent', 'teams', 'local-sequential'];
 const DEFAULT_TIMEOUT_MS = 120000;
@@ -18,6 +19,7 @@ function usage() {
   console.error('Usage:');
   console.error('  run-bug-hunter.cjs preflight [--skill-dir <path>] [--available-backends <csv>] [--backend <name>]');
   console.error('  run-bug-hunter.cjs run --files-json <path> [--mode <name>] [--skill-dir <path>] [--state <path>] [--chunk-size <n>] [--worker-cmd <template>] [--timeout-ms <n>] [--max-retries <n>] [--backoff-ms <n>] [--available-backends <csv>] [--backend <name>] [--fail-fast <true|false>] [--use-index <true|false>] [--index-path <path>] [--delta-mode <true|false>] [--changed-files-json <path>] [--delta-hops <n>] [--expand-on-low-confidence <true|false>] [--confidence-threshold <n>] [--canary-size <n>] [--expansion-cap <n>]');
+  console.error('  run-bug-hunter.cjs phase --artifact <name> --output-path <path> --worker-cmd <template> [--phase-name <name>] [--skill-dir <path>] [--journal-path <path>] [--render-cmd <template>] [--render-output-path <path>] [--timeout-ms <n>] [--render-timeout-ms <n>] [--max-retries <n>] [--backoff-ms <n>]');
   console.error('  run-bug-hunter.cjs plan --files-json <path> [--mode <name>] [--skill-dir <path>] [--chunk-size <n>] [--plan-path <path>]');
 }
 
@@ -114,10 +116,20 @@ function requiredScripts(skillDir) {
   return [
     path.join(skillDir, 'scripts', 'bug-hunter-state.cjs'),
     path.join(skillDir, 'scripts', 'payload-guard.cjs'),
+    path.join(skillDir, 'scripts', 'schema-validate.cjs'),
+    path.join(skillDir, 'scripts', 'schema-runtime.cjs'),
+    path.join(skillDir, 'scripts', 'render-report.cjs'),
     path.join(skillDir, 'scripts', 'fix-lock.cjs'),
     path.join(skillDir, 'scripts', 'doc-lookup.cjs'),
     path.join(skillDir, 'scripts', 'context7-api.cjs'),
-    path.join(skillDir, 'scripts', 'delta-mode.cjs')
+    path.join(skillDir, 'scripts', 'delta-mode.cjs'),
+    path.join(skillDir, 'schemas', 'findings.schema.json'),
+    path.join(skillDir, 'schemas', 'skeptic.schema.json'),
+    path.join(skillDir, 'schemas', 'referee.schema.json'),
+    path.join(skillDir, 'schemas', 'coverage.schema.json'),
+    path.join(skillDir, 'schemas', 'fix-report.schema.json'),
+    path.join(skillDir, 'schemas', 'recon.schema.json'),
+    path.join(skillDir, 'schemas', 'shared.schema.json')
   ];
 }
 
@@ -213,7 +225,8 @@ async function runWithRetry({
   backoffMs,
   journalPath,
   phase,
-  chunkId
+  chunkId,
+  postAttempt
 }) {
   const attempts = maxRetries + 1;
   let lastResult = null;
@@ -228,19 +241,41 @@ async function runWithRetry({
       timeoutMs
     });
     const result = await runCommandOnce({ command, timeoutMs });
-    lastResult = result;
+    let finalResult = result;
+
+    if (finalResult.ok && typeof postAttempt === 'function') {
+      const postAttemptResult = await postAttempt({ attempt });
+      if (!postAttemptResult.ok) {
+        const validationMessage = String(postAttemptResult.errorMessage || 'post-attempt validation failed');
+        appendJournal(journalPath, {
+          event: 'attempt-post-check-failed',
+          phase,
+          chunkId,
+          attempt,
+          errorMessage: validationMessage.slice(0, 500)
+        });
+        finalResult = {
+          ...finalResult,
+          ok: false,
+          stderr: validationMessage
+        };
+      }
+    }
+
     appendJournal(journalPath, {
       event: 'attempt-end',
       phase,
       chunkId,
       attempt,
-      ok: result.ok,
-      code: result.code,
-      timeoutHit: result.timeoutHit,
-      stderr: result.stderr.slice(0, 500)
+      ok: finalResult.ok,
+      code: finalResult.code,
+      timeoutHit: finalResult.timeoutHit,
+      stderr: finalResult.stderr.slice(0, 500)
     });
-    if (result.ok) {
-      return { ok: true, result, attemptsUsed: attempt };
+
+    lastResult = finalResult;
+    if (finalResult.ok) {
+      return { ok: true, result: finalResult, attemptsUsed: attempt };
     }
     if (attempt < attempts) {
       const delayMs = backoffMs * 2 ** (attempt - 1);
@@ -378,8 +413,8 @@ function buildConsistencyReport({ bugLedger, confidenceThreshold }) {
   }
 
   const lowConfidence = bugLedger.filter((entry) => {
-    const confidence = entry.confidence;
-    return confidence === null || confidence === undefined || Number(confidence) < confidenceThreshold;
+    const confidenceScore = entry.confidenceScore;
+    return confidenceScore === null || confidenceScore === undefined || Number(confidenceScore) < confidenceThreshold;
   }).length;
 
   return {
@@ -392,29 +427,29 @@ function buildConsistencyReport({ bugLedger, confidenceThreshold }) {
 }
 
 function buildFixPlan({ bugLedger, confidenceThreshold, canarySize }) {
-  const withConfidence = bugLedger.map((entry) => {
-    const confidenceRaw = entry.confidence;
-    const confidence = Number.isFinite(Number(confidenceRaw)) ? Number(confidenceRaw) : null;
+  const withConfidenceScore = bugLedger.map((entry) => {
+    const confidenceRaw = entry.confidenceScore;
+    const confidenceScore = Number.isFinite(Number(confidenceRaw)) ? Number(confidenceRaw) : null;
     return {
       ...entry,
-      confidence
+      confidenceScore
     };
   });
-  const eligible = withConfidence
-    .filter((entry) => entry.confidence !== null && entry.confidence >= confidenceThreshold)
+  const eligible = withConfidenceScore
+    .filter((entry) => entry.confidenceScore !== null && entry.confidenceScore >= confidenceThreshold)
     .sort((left, right) => {
       const severityDiff = severityRank(right.severity) - severityRank(left.severity);
       if (severityDiff !== 0) {
         return severityDiff;
       }
-      const confidenceDiff = (right.confidence || 0) - (left.confidence || 0);
+      const confidenceDiff = (right.confidenceScore || 0) - (left.confidenceScore || 0);
       if (confidenceDiff !== 0) {
         return confidenceDiff;
       }
       return String(left.key).localeCompare(String(right.key));
     });
-  const manualReview = withConfidence
-    .filter((entry) => entry.confidence === null || entry.confidence < confidenceThreshold);
+  const manualReview = withConfidenceScore
+    .filter((entry) => entry.confidenceScore === null || entry.confidenceScore < confidenceThreshold);
   const canary = eligible.slice(0, canarySize);
   const rollout = eligible.slice(canarySize);
 
@@ -423,7 +458,7 @@ function buildFixPlan({ bugLedger, confidenceThreshold, canarySize }) {
     confidenceThreshold,
     canarySize,
     totals: {
-      findings: withConfidence.length,
+      findings: withConfidenceScore.length,
       eligible: eligible.length,
       canary: canary.length,
       rollout: rollout.length,
@@ -432,6 +467,287 @@ function buildFixPlan({ bugLedger, confidenceThreshold, canarySize }) {
     canary,
     rollout,
     manualReview
+  };
+}
+
+function toCoverageStatus(chunkStatus) {
+  if (chunkStatus === 'done') {
+    return 'done';
+  }
+  if (chunkStatus === 'in_progress') {
+    return 'in_progress';
+  }
+  if (chunkStatus === 'failed') {
+    return 'failed';
+  }
+  return 'pending';
+}
+
+function buildCoverageArtifact({ state, fixPlan }) {
+  const fileEntries = toArray(state.chunks).flatMap((chunk) => {
+    return toArray(chunk.files).map((filePath) => {
+      return {
+        path: String(filePath),
+        status: toCoverageStatus(chunk.status)
+      };
+    });
+  });
+
+  const bugs = toArray(state.bugLedger).map((entry) => {
+    return {
+      bugId: String(entry.bugId || '').trim() || String(entry.key || '').trim(),
+      severity: String(entry.severity || 'Low'),
+      file: String(entry.file || '').trim(),
+      claim: String(entry.claim || '').trim()
+    };
+  });
+
+  const fixStatusByBugId = new Map();
+  for (const entry of toArray(fixPlan && fixPlan.canary)) {
+    fixStatusByBugId.set(String(entry.bugId || '').trim(), 'CANARY');
+  }
+  for (const entry of toArray(fixPlan && fixPlan.rollout)) {
+    fixStatusByBugId.set(String(entry.bugId || '').trim(), 'ROLLOUT');
+  }
+  for (const entry of toArray(fixPlan && fixPlan.manualReview)) {
+    fixStatusByBugId.set(String(entry.bugId || '').trim(), 'MANUAL_REVIEW');
+  }
+
+  const fixes = [...fixStatusByBugId.entries()]
+    .filter(([bugId]) => Boolean(bugId))
+    .map(([bugId, status]) => {
+      return {
+        bugId,
+        status
+      };
+    });
+
+  const hasOpenChunks = toArray(state.chunks).some((chunk) => chunk.status !== 'done');
+
+  return {
+    schemaVersion: 1,
+    iteration: 1,
+    status: hasOpenChunks ? 'IN_PROGRESS' : 'COMPLETE',
+    files: fileEntries,
+    bugs,
+    fixes
+  };
+}
+
+function renderCoverageMarkdown(coverage) {
+  const lines = [
+    '# Bug Hunter Coverage',
+    '',
+    `- Status: ${coverage.status}`,
+    `- Iteration: ${coverage.iteration}`,
+    `- Files: ${coverage.files.length}`,
+    `- Bugs: ${coverage.bugs.length}`,
+    `- Fix entries: ${coverage.fixes.length}`,
+    '',
+    '## Files'
+  ];
+
+  if (coverage.files.length === 0) {
+    lines.push('- None');
+  } else {
+    for (const entry of coverage.files) {
+      lines.push(`- ${entry.status} | ${entry.path}`);
+    }
+  }
+
+  lines.push('', '## Bugs');
+  if (coverage.bugs.length === 0) {
+    lines.push('- None');
+  } else {
+    for (const bug of coverage.bugs) {
+      lines.push(`- ${bug.bugId} | ${bug.severity} | ${bug.file} | ${bug.claim}`);
+    }
+  }
+
+  lines.push('', '## Fixes');
+  if (coverage.fixes.length === 0) {
+    lines.push('- None');
+  } else {
+    for (const fix of coverage.fixes) {
+      lines.push(`- ${fix.bugId} | ${fix.status}`);
+    }
+  }
+
+  return `${lines.join('\n')}\n`;
+}
+
+function validateFindingsArtifact(findingsJsonPath) {
+  if (!fs.existsSync(findingsJsonPath)) {
+    return {
+      ok: false,
+      errors: [`Missing findings artifact: ${findingsJsonPath}`]
+    };
+  }
+  return validateArtifactFile({
+    artifactName: 'findings',
+    filePath: findingsJsonPath
+  });
+}
+
+function validateNamedArtifact({ artifactName, filePath }) {
+  if (!fs.existsSync(filePath)) {
+    return {
+      ok: false,
+      errors: [`Missing ${artifactName} artifact: ${filePath}`]
+    };
+  }
+  return validateArtifactFile({
+    artifactName,
+    filePath
+  });
+}
+
+function removeFileIfExists(filePath) {
+  if (!filePath) {
+    return;
+  }
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+}
+
+async function runPhase(options) {
+  const artifact = String(options.artifact || '').trim();
+  if (!artifact) {
+    throw new Error('--artifact is required for phase command');
+  }
+  if (!options['output-path']) {
+    throw new Error('--output-path is required for phase command');
+  }
+  if (!options['worker-cmd']) {
+    throw new Error('--worker-cmd is required for phase command');
+  }
+
+  const skillDir = resolveSkillDir(options);
+  const preflightResult = preflight(options);
+  if (!preflightResult.ok) {
+    throw new Error(`Missing helper scripts: ${preflightResult.missing.join(', ')}`);
+  }
+
+  const phaseName = options['phase-name'] || artifact;
+  const outputPath = path.resolve(options['output-path']);
+  const renderOutputPath = options['render-output-path']
+    ? path.resolve(options['render-output-path'])
+    : null;
+  const workerCmdTemplate = options['worker-cmd'];
+  const renderCmdTemplate = options['render-cmd'] || null;
+  const timeoutMs = toPositiveInt(options['timeout-ms'], DEFAULT_TIMEOUT_MS);
+  const renderTimeoutMs = toPositiveInt(options['render-timeout-ms'], timeoutMs);
+  const maxRetries = toPositiveInt(options['max-retries'], DEFAULT_MAX_RETRIES);
+  const backoffMs = toPositiveInt(options['backoff-ms'], DEFAULT_BACKOFF_MS);
+  const journalPath = path.resolve(
+    options['journal-path'] || path.join(path.dirname(outputPath), `${phaseName}.log`)
+  );
+  const templateVariables = {
+    artifact,
+    outputPath,
+    outputFilePath: outputPath,
+    renderOutputPath: renderOutputPath || '',
+    journalPath,
+    phaseName,
+    skillDir
+  };
+
+  ensureDir(path.dirname(outputPath));
+  if (renderOutputPath) {
+    ensureDir(path.dirname(renderOutputPath));
+  }
+  removeFileIfExists(outputPath);
+  removeFileIfExists(renderOutputPath);
+
+  appendJournal(journalPath, {
+    event: 'phase-start',
+    artifact,
+    phase: phaseName,
+    outputPath,
+    renderOutputPath
+  });
+
+  const workerCommand = fillTemplate(workerCmdTemplate, templateVariables);
+  const runResult = await runWithRetry({
+    command: workerCommand,
+    timeoutMs,
+    maxRetries,
+    backoffMs,
+    journalPath,
+    phase: phaseName,
+    chunkId: artifact,
+    postAttempt: async () => {
+      const validation = validateNamedArtifact({
+        artifactName: artifact,
+        filePath: outputPath
+      });
+      if (validation.ok) {
+        return { ok: true };
+      }
+      return {
+        ok: false,
+        errorMessage: validation.errors.join('; ')
+      };
+    }
+  });
+
+  if (!runResult.ok) {
+    const errorMessage = (runResult.result && runResult.result.stderr) || `${phaseName} failed`;
+    appendJournal(journalPath, {
+      event: 'phase-failed',
+      artifact,
+      phase: phaseName,
+      errorMessage: errorMessage.slice(0, 500)
+    });
+    throw new Error(errorMessage);
+  }
+
+  if (renderCmdTemplate) {
+    const renderCommand = fillTemplate(renderCmdTemplate, templateVariables);
+    appendJournal(journalPath, {
+      event: 'phase-render-start',
+      artifact,
+      phase: phaseName,
+      renderOutputPath
+    });
+    const renderResult = await runCommandOnce({
+      command: renderCommand,
+      timeoutMs: renderTimeoutMs
+    });
+    if (!renderResult.ok) {
+      const renderError = renderResult.stderr || renderResult.stdout || `${phaseName} render failed`;
+      appendJournal(journalPath, {
+        event: 'phase-render-failed',
+        artifact,
+        phase: phaseName,
+        errorMessage: renderError.slice(0, 500)
+      });
+      throw new Error(renderError);
+    }
+    appendJournal(journalPath, {
+      event: 'phase-render-end',
+      artifact,
+      phase: phaseName,
+      renderOutputPath
+    });
+  }
+
+  appendJournal(journalPath, {
+    event: 'phase-end',
+    artifact,
+    phase: phaseName,
+    attemptsUsed: runResult.attemptsUsed
+  });
+
+  return {
+    ok: true,
+    artifact,
+    phase: phaseName,
+    outputPath,
+    renderOutputPath,
+    journalPath,
+    attemptsUsed: runResult.attemptsUsed
   };
 }
 
@@ -513,7 +829,17 @@ async function processPendingChunks({
       backoffMs,
       journalPath,
       phase: 'chunk-worker',
-      chunkId: chunk.id
+      chunkId: chunk.id,
+      postAttempt: async () => {
+        const findingsValidation = validateFindingsArtifact(findingsJsonPath);
+        if (findingsValidation.ok) {
+          return { ok: true };
+        }
+        return {
+          ok: false,
+          errorMessage: findingsValidation.errors.join('; ')
+        };
+      }
     });
 
     if (!runResult.ok) {
@@ -531,10 +857,8 @@ async function processPendingChunks({
     }
 
     let findings = [];
-    if (fs.existsSync(findingsJsonPath)) {
-      runJsonScript(stateScript, ['record-findings', statePath, findingsJsonPath, 'orchestrator']);
-      findings = readJson(findingsJsonPath);
-    }
+    runJsonScript(stateScript, ['record-findings', statePath, findingsJsonPath, 'orchestrator']);
+    findings = readJson(findingsJsonPath);
 
     if (fs.existsSync(factsJsonPath)) {
       runJsonScript(stateScript, ['record-fact-card', statePath, chunk.id, factsJsonPath]);
@@ -662,6 +986,8 @@ async function runPipeline(options) {
   const chunksDir = path.resolve(path.dirname(statePath), 'chunks');
   const consistencyReportPath = path.resolve(options['consistency-report'] || path.join(path.dirname(statePath), 'consistency.json'));
   const fixPlanPath = path.resolve(options['fix-plan-path'] || path.join(path.dirname(statePath), 'fix-plan.json'));
+  const coveragePath = path.resolve(options['coverage-path'] || path.join(path.dirname(statePath), 'coverage.json'));
+  const coverageMarkdownPath = path.resolve(options['coverage-markdown-path'] || path.join(path.dirname(statePath), 'coverage.md'));
   const factsPath = path.resolve(options['facts-path'] || path.join(path.dirname(statePath), 'bug-hunter-facts.json'));
   ensureDir(chunksDir);
 
@@ -709,7 +1035,7 @@ async function runPipeline(options) {
     const state = readJson(statePath);
     const lowConfidenceFiles = normalizeFiles(state.bugLedger
       .filter((entry) => {
-        return entry.confidence === null || entry.confidence === undefined || Number(entry.confidence) < confidenceThreshold;
+        return entry.confidenceScore === null || entry.confidenceScore === undefined || Number(entry.confidenceScore) < confidenceThreshold;
       })
       .map((entry) => entry.file));
     if (lowConfidenceFiles.length > 0 && scope.indexPath) {
@@ -781,6 +1107,21 @@ async function runPipeline(options) {
   writeJson(fixPlanPath, fixPlan);
   runJsonScript(stateScript, ['set-fix-plan', statePath, fixPlanPath]);
 
+  const coverage = buildCoverageArtifact({
+    state: finalState,
+    fixPlan
+  });
+  const coverageValidation = validateArtifactValue({
+    artifactName: 'coverage',
+    value: coverage
+  });
+  if (!coverageValidation.ok) {
+    throw new Error(`Generated invalid coverage artifact: ${coverageValidation.errors.join('; ')}`);
+  }
+  writeJson(coveragePath, coverage);
+  ensureDir(path.dirname(coverageMarkdownPath));
+  fs.writeFileSync(coverageMarkdownPath, renderCoverageMarkdown(coverage), 'utf8');
+
   writeJson(factsPath, finalState.factCards || {});
 
   appendJournal(journalPath, {
@@ -803,6 +1144,8 @@ async function runPipeline(options) {
     } : null,
     consistencyReportPath,
     fixPlanPath,
+    coveragePath,
+    coverageMarkdownPath,
     factsPath,
     status: status.summary,
     consistency: {
@@ -831,6 +1174,12 @@ async function main() {
 
   if (command === 'run') {
     const result = await runPipeline(options);
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (command === 'phase') {
+    const result = await runPhase(options);
     console.log(JSON.stringify(result, null, 2));
     return;
   }
