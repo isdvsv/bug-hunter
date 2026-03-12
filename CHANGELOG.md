@@ -5,7 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.5] — 2026-03-11
+## [3.0.7] - 2026-03-12
+
+### Highlights
+- **All agents are now first-class skills.** Hunter, Skeptic, Referee, Fixer, Recon, and Doc-Lookup are bundled under `skills/` with proper frontmatter - no more loose prompt files.
+- **Prepublish guard** prevents publishing to npm without committing and pushing to GitHub first.
+- **CI fully green** on both Node 18 and 20 with portable shell detection and explicit branch naming.
+
+### Added
+- `skills/hunter/SKILL.md` - deep behavioral code analysis skill (migrated from `prompts/hunter.md`)
+- `skills/skeptic/SKILL.md` - adversarial code reviewer skill (migrated from `prompts/skeptic.md`)
+- `skills/referee/SKILL.md` - independent final arbiter skill (migrated from `prompts/referee.md`)
+- `skills/fixer/SKILL.md` - surgical code repair skill (migrated from `prompts/fixer.md`)
+- `skills/recon/SKILL.md` - codebase reconnaissance skill (migrated from `prompts/recon.md`)
+- `skills/doc-lookup/SKILL.md` - unified documentation access skill (Context Hub + Context7)
+- `scripts/prepublish-guard.cjs` - blocks `npm publish` when git working tree is dirty or commits are unpushed
+- `prepublishOnly` lifecycle hook in `package.json` enforcing the guard
+
+### Changed
+- `SKILL.md` orchestrator routing table now points to `skills/` instead of `prompts/`
+- `run-bug-hunter.cjs` preflight now validates all 10 bundled skill `SKILL.md` files exist
+- `run-bug-hunter.cjs` uses `process.env.SHELL || '/bin/bash'` instead of hardcoded `/bin/zsh` for CI portability
+- `worktree-harvest.test.cjs` uses `git init --bare -b main` for CI environments where default branch is not `main`
+- `templates/subagent-wrapper.md` references `skills/` paths instead of `prompts/`
+- `skills/README.md` now documents all 10 bundled skills (6 core agents + 4 security skills)
+
+### Fixed
+- All v3.0.5 code changes that were published to npm but never committed to GitHub (21 new files, 19 updated files recovered)
+- `package.json` version synced to match npm-published 3.0.5→3.0.6→3.0.7
+
+## [3.0.6] - 2026-03-12
+
+### Added
+- `scripts/prepublish-guard.cjs` - first version of the publish safety net
+- CI fixes for worktree tests and shell portability
+
+### Fixed
+- Synced all v3.0.5 changes from npm to GitHub (security skills, PR review flow, schemas, images)
+
+## [3.0.5] - 2026-03-11
 
 ### Added
 - `agents/openai.yaml` UI metadata for skill lists and quick-invoke prompts
@@ -17,33 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Highlights
-- PR review is now a first-class workflow with `--pr`, `--pr current`, `--pr recent`, `--pr 123`, `--last-pr`, and `--pr-security`.
-- Bug Hunter now emits both `fix-strategy.json` and `fix-plan.json` before fix execution so remediation stays reviewable and confidence-gated.
-- The enterprise security pack now ships inside the repository under `skills/`, making PR security review and full security audits portable.
-- Fix execution is now safer through schema-validated planning, atomic lock handling, safer worktree cleanup, stash preservation, and shell-safe templating.
-
-### Added
-- GitHub Actions npm publish workflow on release publish or manual dispatch, with version/tag verification before `npm publish`
-- bundled local security skills under `skills/`: `commit-security-scan`, `security-review`, `threat-model-generation`, and `vulnerability-validation`
-- enterprise security entrypoints: `--pr-security`, `--security-review`, and `--validate-security`
-- regression tests and eval coverage for integrated local security-skill routing
-- `schemas/fix-plan.schema.json` plus validation coverage for canonical fix-plan artifacts
-- focused regressions for lock-token ownership, atomic lock acquisition, stale artifact clearing, shell-safe worker paths, failed-chunk fix-plan suppression, managed worktree cleanup, and stash-ref preservation
-
-### Changed
-- portable security capabilities now live inside the repository under `skills/` instead of depending on external machine-specific skill paths
-- package metadata now ships the `skills/` directory for self-contained distribution
-- main Bug Hunter orchestration now routes into the bundled local security skills for PR security review, threat-model generation, enterprise security review, and vulnerability validation
-- fix-lock now uses owner tokens for renew/release, atomic acquisition under contention, and safe recovery from corrupted lock files
-- run-bug-hunter now shell-quotes templated command arguments, clears stale artifacts before retries, validates fix-plan artifacts, and skips fix-plan emission when chunks fail
-- worktree cleanup/status now preserve unrelated directories, preserve stash metadata from defensive harvests, and avoid reporting manifest-only worktrees as dirty
-- current-PR git fallback now diffs against the discovered `origin/<default-branch>` ref when the base branch comes from `origin/HEAD`
-- README now opens with a short “New in This Update” and PR-first quick-start section
-- `llms.txt` and `llms-full.txt` now describe the PR review flow, bundled local security pack, current fix artifacts, and the current regression-test coverage
-- `skills/README.md` now explains how the bundled security skills map into Bug Hunter workflows
-
-## [3.0.4] — 2026-03-11
+## [3.0.4] - 2026-03-11
 
 ### Added
 - `schemas/*.schema.json` versioned contracts for recon, findings, skeptic, referee, coverage, fix-report, plus shared definitions and example findings fixtures
@@ -63,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - preflight now checks all shipped structured-output schemas, not just findings
 - structured-output migration now enforces orchestrated outbound validation beyond the local/manual path
 
-## [3.0.1] — 2026-03-11
+## [3.0.1] - 2026-03-11
 
 ### Changed
 - Loop and fix-loop completion now require full queued source-file coverage, not just CRITICAL/HIGH coverage
@@ -71,7 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Loop iteration guidance now scales `maxIterations` from queue size so large audits do not stop early
 - Large-codebase mode now treats LOW domains as part of the default autonomous queue instead of optional skipped work
 
-## [3.0.0] — 2026-03-10
+## [3.0.0] - 2026-03-10
 
 ### Added
 - `package.json` with `@codexstar/bug-hunter` package name
@@ -80,7 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `bug-hunter doctor` checks environment readiness (Node.js, Context Hub, Context7, git)
 - Install via: `npm install -g @codexstar/bug-hunter && bug-hunter install`
 - Compatible with `npx skills add codexstar69/bug-hunter` for Cursor, Windsurf, Copilot, Kiro, and Claude Code
-- `scripts/worktree-harvest.cjs` — manages git worktrees for safe, isolated Fixer execution (6 subcommands: `prepare`, `harvest`, `checkout-fix`, `cleanup`, `cleanup-all`, `status`)
+- `scripts/worktree-harvest.cjs` - manages git worktrees for safe, isolated Fixer execution (6 subcommands: `prepare`, `harvest`, `checkout-fix`, `cleanup`, `cleanup-all`, `status`)
 - 13 new tests in `scripts/tests/worktree-harvest.test.cjs` (full suite: 25/25 passing)
 - 5 new error rows in SKILL.md for worktree failures: prepare, harvest dirty, harvest no-manifest, cleanup, and checkout-fix errors
 
@@ -90,7 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `templates/subagent-wrapper.md` updated with `{WORKTREE_RULES}` variable for Fixer isolation rules
 - SKILL.md Step 5b now shows a visible `⚠️` warning when `chub` is not installed (previously a silent suggestion)
 
-## [2.4.1] — 2026-03-10
+## [2.4.1] - 2026-03-10
 
 ### Fixed
 - `scripts/triage.cjs`: LOW-only repositories promoted into `scanOrder` so script-heavy codebases do not collapse to zero scannable files
@@ -101,28 +113,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `scripts/tests/run-bug-hunter.test.cjs`: regressions for LOW-only triage, optional `code-index`, `teams` backend selection, and delta-hop expansion
 
-## [2.4.0] — 2026-03-10
+## [2.4.0] - 2026-03-10
 
 ### Added
 - `scripts/doc-lookup.cjs`: hybrid documentation lookup that tries [Context Hub](https://github.com/andrewyng/context-hub) (chub) first for curated, versioned, annotatable docs, then falls back to Context7 API when chub doesn't have the library
-- Requires `@aisuite/chub` installed globally (`npm install -g @aisuite/chub`) — optional but recommended; pipeline works without it via Context7 fallback
+- Requires `@aisuite/chub` installed globally (`npm install -g @aisuite/chub`) - optional but recommended; pipeline works without it via Context7 fallback
 
 ### Changed
 - All agent prompts (hunter, skeptic, fixer, doc-lookup) updated to use `doc-lookup.cjs` as primary with `context7-api.cjs` as explicit fallback
 - Preflight smoke test now checks `doc-lookup.cjs` first, falls back to `context7-api.cjs`
 - `run-bug-hunter.cjs` validates both scripts exist at startup
 
-## [2.3.0] — 2026-03-10
+## [2.3.0] - 2026-03-10
 
 ### Changed
-- `LOOP_MODE=true` is the new default — every `/bug-hunter` invocation iterates until full CRITICAL/HIGH coverage
+- `LOOP_MODE=true` is the new default - every `/bug-hunter` invocation iterates until full CRITICAL/HIGH coverage
 - `--loop` flag still accepted for backwards compatibility (no-op)
 - Updated triage warnings, coverage enforcement, and all documentation to reflect the new default
 
 ### Added
 - `--no-loop` flag to opt out and get single-pass behavior
 
-## [2.2.1] — 2026-03-10
+## [2.2.1] - 2026-03-10
 
 ### Fixed
 - `modes/loop.md`: added explicit `ralph_start` call instructions with correct `taskContent` and `maxIterations` parameters
@@ -131,16 +143,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changed completion signal from `<promise>DONE</promise>` to `<promise>COMPLETE</promise>` (correct ralph-loop API)
 - Each iteration now calls `ralph_done` to proceed instead of relying on a non-existent hook
 
-## [2.2.0] — 2026-03-10
+## [2.2.0] - 2026-03-10
 
 ### Added
 - Rollback timeout guard: `git revert` calls now timeout after 60 seconds; conflicts abort cleanly instead of hanging
 - Dynamic lock TTL: single-writer lock TTL scales with queue size (`max(1800, bugs * 600)`)
 - Lock heartbeat renewal: new `renew` command in `fix-lock.cjs`
-- Fixer context budget: `MAX_BUGS_PER_FIXER = 5` — large fix queues split into sequential batches
+- Fixer context budget: `MAX_BUGS_PER_FIXER = 5` - large fix queues split into sequential batches
 - Cross-file dependency ordering: when `code-index.cjs` is available, fixes are ordered by import graph
 - Flaky test detection: baseline tests run twice; non-deterministic failures excluded from revert decisions
-- Dynamic canary sizing: `max(1, min(3, ceil(eligible * 0.2)))` — canary group scales with queue size
+- Dynamic canary sizing: `max(1, min(3, ceil(eligible * 0.2)))` - canary group scales with queue size
 - Dry-run mode (`--dry-run`): preview planned fixes without editing files
 - Machine-readable fix report: `.bug-hunter/fix-report.json` for CI/CD gating, dashboards, and ticket automation
 - Circuit breaker: if >50% of fix attempts fail/revert (min 3 attempts), remaining fixes are halted
@@ -150,7 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-bug revert granularity: clarified one-commit-per-bug as mandatory; reverts target individual bugs, not clusters
 - Post-fix re-scan severity floor: fixer-introduced bugs below MEDIUM severity are logged but don't trigger `FIXER_BUG` status
 
-## [2.1.0] — 2026-03-10
+## [2.1.0] - 2026-03-10
 
 ### Added
 - STRIDE/CWE fields in Hunter findings format, with CWE quick-reference mapping for security categories
@@ -164,14 +176,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `dep-scan.cjs` lockfile-aware audits (`npm`, `pnpm`, `yarn`, `bun`) and non-zero audit exit handling so vulnerability exits are not misreported as scanner failures
 
-## [2.0.0] — 2026-03-10
+## [2.0.0] - 2026-03-10
 
 ### Changed
-- Triage moved to Step 1 (after arg parse) — was running before target resolved
-- All mode files consume triage JSON — riskMap, scanOrder, fileBudget flow downstream
-- Recon demoted to enrichment — no longer does file classification when triage exists
+- Triage moved to Step 1 (after arg parse) - was running before target resolved
+- All mode files consume triage JSON - riskMap, scanOrder, fileBudget flow downstream
+- Recon demoted to enrichment - no longer does file classification when triage exists
 - Mode files compressed: small 7.3→2.9KB, parallel 7.9→4.2KB, extended 7.1→3.3KB, scaled 7.3→2.7KB
-- Skip-file patterns consolidated — single authoritative list in SKILL.md
+- Skip-file patterns consolidated - single authoritative list in SKILL.md
 - Error handling table updated with correct step references
 - hunter.md: scope rules and security checklist compressed
 - recon.md: output format template and "What to map" sections compressed
@@ -181,23 +193,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - single-file.md: local-sequential backend support added
 
 ### Added
-- `modes/_dispatch.md` — shared dispatch patterns (18 references across modes)
+- `modes/_dispatch.md` - shared dispatch patterns (18 references across modes)
 
 ### Removed
-- Step 7.0 re-audit gate removed — duplicated Referee's work
+- Step 7.0 re-audit gate removed - duplicated Referee's work
 - FIX-PLAN.md deleted (26KB dead planning doc)
 - README.md compressed from 8.5KB to 3.7KB
 - code-index.cjs marked optional
 
-## [1.0.0] — 2026-03-10
+## [1.0.0] - 2026-03-10
 
 ### Added
-- `scripts/triage.cjs` — zero-token pre-recon triage, runs before any LLM agent (<2s for 2,000+ files)
+- `scripts/triage.cjs` - zero-token pre-recon triage, runs before any LLM agent (<2s for 2,000+ files)
 - FILE_BUDGET, strategy, and domain map decided by triage, not Recon
 - Writes `.bug-hunter/triage.json` with strategy, fileBudget, domains, riskMap, scanOrder
 - `local-sequential.md` with full phase-by-phase instructions
 - Subagent wrapper template in `templates/subagent-wrapper.md`
-- Coverage enforcement — partial audits produce explicit warnings
+- Coverage enforcement - partial audits produce explicit warnings
 - Large codebase strategy with domain-first tiered scanning
 
 [Unreleased]: https://github.com/codexstar69/bug-hunter/compare/v3.0.5...HEAD

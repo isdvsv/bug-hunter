@@ -14,15 +14,37 @@ Bug Hunter is an automated adversarial code auditing skill for AI coding agents.
 - Documentation verification: checks claims against official library docs via Context Hub + Context7
 - Safe auto-fix: git-branched fixes with worktree isolation, canary rollout, test verification, and automatic rollback
 - Dependency CVE scanning: lockfile-aware audits for npm, pnpm, yarn, bun
+- PR review: first-class `--pr` workflow for reviewing current, recent, or numbered PRs
+- Enterprise security pack: bundled STRIDE threat modeling, vulnerability validation, and security review skills
+
+## Architecture — Skills-First Design
+
+All pipeline agents are bundled as first-class skills under `skills/`:
+
+| Skill | Purpose |
+|-------|---------|
+| `skills/hunter/` | Deep behavioral code analysis — finds bugs |
+| `skills/skeptic/` | Adversarial reviewer — kills false positives |
+| `skills/referee/` | Independent arbiter — delivers final verdicts |
+| `skills/fixer/` | Surgical code repair — implements fixes |
+| `skills/recon/` | Codebase reconnaissance — maps architecture |
+| `skills/doc-lookup/` | Documentation access — Context Hub + Context7 |
+| `skills/commit-security-scan/` | PR/commit security review |
+| `skills/security-review/` | Full enterprise security audit |
+| `skills/threat-model-generation/` | STRIDE threat model generation |
+| `skills/vulnerability-validation/` | Exploitability/CVSS validation |
 
 ## Usage
 
 ```
-/bug-hunter src/              # scan a directory
-/bug-hunter src/ --fix        # scan and auto-fix
-/bug-hunter --diff main       # scan only changed files vs main branch
-/bug-hunter --threat-model    # generate STRIDE threat model first
-/bug-hunter --deps            # include dependency CVE scan
+/bug-hunter src/                   # scan a directory, auto-fix confirmed bugs
+/bug-hunter --scan-only src/       # report only, no code changes
+/bug-hunter --pr current           # review the current PR
+/bug-hunter --pr-security          # PR security review with threat model + CVEs
+/bug-hunter --security-review src/ # enterprise security audit
+/bug-hunter --threat-model src/    # generate STRIDE threat model
+/bug-hunter --deps src/            # include dependency CVE scan
+/bug-hunter -b feature-xyz        # scan branch diff vs main
 ```
 
 ## Install
