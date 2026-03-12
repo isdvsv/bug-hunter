@@ -20,7 +20,7 @@ function makeGitFixture() {
   // Bare origin
   const origin = path.join(sandbox, 'origin.git');
   fs.mkdirSync(origin, { recursive: true });
-  execFileSync('git', ['init', '--bare'], { cwd: origin, stdio: 'ignore' });
+  execFileSync('git', ['init', '--bare', '-b', 'main'], { cwd: origin, stdio: 'ignore' });
 
   // Working clone
   const repo = path.join(sandbox, 'repo');
