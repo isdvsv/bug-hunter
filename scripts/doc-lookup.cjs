@@ -71,9 +71,13 @@ function chubAvailable() {
   }
 }
 
+function shellQuote(s) {
+  return "'" + String(s).replace(/'/g, "'\\''") + "'";
+}
+
 function chubSearch(library) {
   try {
-    const raw = execSync(`chub search "${library}" --json`, {
+    const raw = execSync(`chub search ${shellQuote(library)} --json`, {
       encoding: 'utf8',
       timeout: CHUB_TIMEOUT_MS,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -87,8 +91,8 @@ function chubSearch(library) {
 
 function chubGet(id, lang) {
   try {
-    const langFlag = lang ? ` --lang ${lang}` : '';
-    const raw = execSync(`chub get ${id}${langFlag}`, {
+    const langFlag = lang ? ` --lang ${shellQuote(lang)}` : '';
+    const raw = execSync(`chub get ${shellQuote(id)}${langFlag}`, {
       encoding: 'utf8',
       timeout: CHUB_TIMEOUT_MS,
       stdio: ['pipe', 'pipe', 'pipe'],
