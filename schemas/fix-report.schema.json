@@ -31,7 +31,7 @@
           "bugId": { "type": "string", "minLength": 1 },
           "severity": {
             "type": "string",
-            "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "Critical", "Medium", "Low"]
+            "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "Critical", "High", "Medium", "Low"]
           },
           "status": { "type": "string", "minLength": 1 },
           "files": {
