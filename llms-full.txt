@@ -166,7 +166,7 @@ bug-hunter/
 │   ├── doc-lookup.cjs     # Context Hub + Context7 doc lookup
 │   ├── context7-api.cjs   # Context7 standalone fallback
 │   ├── prepublish-guard.cjs # Publish safety net
-│   └── tests/             # Test suite (60 tests)
+│   └── tests/             # Test suite (61 tests)
 ├── templates/             # Subagent launch template
 └── test-fixture/          # 6 planted bugs for validation
 ```

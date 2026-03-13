@@ -51,13 +51,15 @@ npm install -g @aisuite/chub
 
 ## New in This Update
 
-This release makes Bug Hunter much better at PR-first auditing and safer at automated remediation.
+This release is a reliability hardening pass — 11 bugs fixed, 10 previously-failing tests now pass, and the full pipeline is more robust end-to-end.
 
-- **PR review is now a first-class workflow.** Review the current PR, the most recent PR, or a specific PR number with `--pr`, `--pr current`, `--pr recent`, or `--pr 123`.
-- **PR security review is now built in.** `--pr-security` runs a PR-scoped security audit with threat-model and dependency context, without editing code.
-- **Strategic remediation is now explicit.** Bug Hunter writes `fix-strategy.json` and `fix-plan.json` before fixes run, so auto-fix decisions stay explainable and reviewable.
-- **The security pack is now bundled locally.** `commit-security-scan`, `security-review`, `threat-model-generation`, and `vulnerability-validation` now ship inside the repo under `skills/`.
-- **Fix execution is harder to break.** This update adds schema-validated fix plans, atomic lock handling, safer worktree cleanup, stash preservation, and shell-safe worker command templating.
+- **`High` severity works everywhere.** All JSON schemas, severity ranking, and payload-guard templates now recognize `High` — previously only `Critical`, `Medium`, and `Low` were accepted, silently dropping valid findings.
+- **Confidence threshold is fully wired.** `--confidence-threshold` now propagates from the CLI through the orchestrator to `record-findings`. Previously the flag was parsed but never forwarded, always defaulting to 75.
+- **Shell injection fixed in doc-lookup.** Library names passed to `chub` CLI are now properly shell-quoted — prevents command injection via crafted library names.
+- **SIGKILL timer leak fixed.** The failsafe kill timer in `runCommandOnce` is now cleared on normal exit — previously it could fire after the child had already exited.
+- **Modern Bun lockfile support.** `dep-scan.cjs` now detects `bun.lock` (text format, Bun 1.2+) alongside the legacy `bun.lockb` binary format.
+- **Worktree commit parsing hardened.** Edge case where `git log` lines with no space separator caused truncated hashes and wrong messages is now handled.
+- **61 tests, 0 failures.** Up from 50 passing / 10 failing — the test suite now covers severity ranking, schema validation, confidence threshold propagation, and shell-safe worker templating.
 
 <p align="center">
   <img src="docs/images/2026-03-12-pr-review-flow.png" alt="PR review workflow banner — pull request scope, security checks, threat-model context, and final verdict in a clean product-style UI" width="100%">
@@ -688,7 +690,7 @@ All flags compose: `/bug-hunter --deps --threat-model --fix src/`
 
 Bug Hunter ships with a test fixture containing an Express app with **6 intentionally planted bugs** (2 Critical, 3 Medium, 1 Low):
 
-The repository also ships with **60 Node.js regression tests** covering orchestration, schemas, PR scope resolution, fix-plan validation, lock behavior, worktree lifecycle, and the bundled local security-skill routing.
+The repository also ships with **61 Node.js regression tests** covering orchestration, schemas, PR scope resolution, fix-plan validation, lock behavior, worktree lifecycle, severity ranking, and the bundled local security-skill routing.
 
 ```bash
 /bug-hunter test-fixture/
@@ -758,8 +760,12 @@ bug-hunter/
 │   ├── findings.schema.json              #   Hunter findings schema
 │   ├── skeptic.schema.json               #   Skeptic artifact schema
 │   ├── referee.schema.json               #   Referee artifact schema
+│   ├── fix-report.schema.json            #   Fix report artifact schema
 │   ├── fix-strategy.schema.json          #   Strategic remediation schema
-│   └── fix-plan.schema.json              #   Fix execution schema
+│   ├── fix-plan.schema.json              #   Fix execution schema
+│   ├── coverage.schema.json              #   Coverage tracking schema
+│   ├── recon.schema.json                 #   Recon artifact schema
+│   └── shared.schema.json                #   Shared definitions
 │
 ├── skills/                               # Bundled local security pack
 │   ├── commit-security-scan/
@@ -781,6 +787,10 @@ bug-hunter/
 │   ├── code-index.cjs                    #   Cross-domain analysis (optional)
 │   └── tests/                            #   Test suite (node --test)
 │       ├── run-bug-hunter.test.cjs       #     Orchestrator tests
+│       ├── bug-hunter-state.test.cjs     #     State management tests
+│       ├── code-index.test.cjs           #     Code index tests
+│       ├── delta-mode.test.cjs           #     Delta mode tests
+│       ├── pr-scope.test.cjs             #     PR scope resolution tests
 │       └── worktree-harvest.test.cjs     #     Worktree lifecycle tests
 │
 ├── templates/

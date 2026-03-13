@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.8] - 2026-03-13
+
+### Highlights
+- **All 61 tests pass.** Systematic reliability audit fixed 11 bugs across schemas, scripts, and the orchestrator — 10 previously-failing tests now pass, plus one new test added.
+- **`High` severity now works end-to-end.** All JSON schemas, severity ranking functions, and payload-guard templates recognize `High` as a valid severity level.
+- **Confidence threshold is fully configurable.** The `--confidence-threshold` flag now propagates through the entire pipeline — from the orchestrator through `processPendingChunks` to `record-findings`.
+- **Shell injection fixed in doc-lookup.** Library names and IDs passed to `chub` CLI are now properly shell-quoted.
+- **Modern Bun support.** `dep-scan.cjs` detects `bun.lock` (Bun 1.2+ text format) alongside the legacy `bun.lockb` binary format.
+
+### Fixed
+- `schemas/findings.schema.json`, `schemas/skeptic.schema.json`, `schemas/referee.schema.json`, `schemas/fix-report.schema.json`: added missing `High` to severity enums — previously only `Critical`, `Medium`, and `Low` were accepted, causing valid findings to fail schema validation
+- `scripts/bug-hunter-state.cjs`: `severityRank()` now returns rank 2 for `High` severity — previously returned -1 (unknown), breaking severity ordering and dedup logic
+- `scripts/run-bug-hunter.cjs`: `classifyStrategy()` added explicit parentheses around compound conditions to prevent operator-precedence misclassification
+- `scripts/run-bug-hunter.cjs`: `runCommandOnce()` now clears the SIGKILL failsafe timer on normal exit — previously leaked a timer handle that could fire after the process had already exited
+- `scripts/run-bug-hunter.cjs`: `processPendingChunks()` now receives and forwards `confidenceThreshold` to `record-findings` — previously the configurable threshold was silently ignored, always defaulting to 75
+- `scripts/worktree-harvest.cjs`: commit log parsing no longer truncates the hash or drops the message when a `git log` line contains no space separator
+- `scripts/dep-scan.cjs`: lockfile detection now checks for `bun.lock` (text format, Bun ≥1.2) in addition to `bun.lockb`
+- `scripts/payload-guard.cjs`: hunter and fixer severity template strings now include `High` alongside `Critical`, `Medium`, and `Low`
+- `scripts/doc-lookup.cjs`: `chubSearch()` and `chubGet()` now shell-quote all interpolated arguments via single-quote wrapping — previously, library names containing shell metacharacters could cause command injection
+
+### Changed
+- `scripts/bug-hunter-state.cjs`: `record-findings` command now accepts an optional 4th positional argument for confidence threshold (defaults to 75 for backwards compatibility)
+- Test suite expanded from 50 passing / 10 failing to **61 passing / 0 failing**
+
+### Added
+- `scripts/tests/bug-hunter-state.test.cjs`: new test verifying that `High` severity findings are ranked above `Medium` and `Low`, and that re-recording with higher severity upgrades the existing ledger entry
+
 ## [3.0.7] - 2026-03-12
 
 ### Highlights
@@ -212,7 +239,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Coverage enforcement - partial audits produce explicit warnings
 - Large codebase strategy with domain-first tiered scanning
 
-[Unreleased]: https://github.com/codexstar69/bug-hunter/compare/v3.0.5...HEAD
+[Unreleased]: https://github.com/codexstar69/bug-hunter/compare/v3.0.8...HEAD
+[3.0.8]: https://github.com/codexstar69/bug-hunter/compare/v3.0.7...v3.0.8
+[3.0.7]: https://github.com/codexstar69/bug-hunter/compare/v3.0.5...v3.0.7
 [3.0.5]: https://github.com/codexstar69/bug-hunter/compare/v3.0.4...v3.0.5
 [3.0.4]: https://github.com/codexstar69/bug-hunter/compare/v3.0.3...v3.0.4
 [3.0.3]: https://github.com/codexstar69/bug-hunter/compare/v3.0.2...v3.0.3
