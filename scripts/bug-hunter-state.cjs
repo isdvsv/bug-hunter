@@ -133,13 +133,16 @@ function severityRank(severity) {
   if (normalized === 'critical') {
     return 3;
   }
-  if (normalized === 'medium') {
+  if (normalized === 'high') {
     return 2;
   }
-  if (normalized === 'low') {
+  if (normalized === 'medium') {
     return 1;
   }
-  return 0;
+  if (normalized === 'low') {
+    return 0;
+  }
+  return -1;
 }
 
 function usage() {

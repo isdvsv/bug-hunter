@@ -574,7 +574,7 @@ function classifyStrategy(entry, confidenceThreshold) {
     };
   }
 
-  if (refactorSignals.some((signal) => claim.includes(signal)) || severityRank(entry.severity) >= 2 && crossReferences.length >= 2) {
+  if (refactorSignals.some((signal) => claim.includes(signal)) || (severityRank(entry.severity) >= 2 && crossReferences.length >= 2)) {
     return {
       strategy: 'larger-refactor',
       executionStage: 'manual-review',
