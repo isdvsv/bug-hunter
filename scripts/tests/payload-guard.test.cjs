@@ -145,7 +145,7 @@ test('schema-validate accepts valid skeptic, referee, fix-report, fix-strategy, 
         autofixEligible: true,
         bugIds: ['BUG-1'],
         files: ['src/a.ts'],
-        maxSeverity: 'CRITICAL',
+        maxSeverity: 'Critical',
         summary: '1 bug(s) in src classified as safe-autofix.',
         recommendedAction: 'Proceed through the guarded fix pipeline with canary verification and rollback safety.',
         reasons: ['Finding is localized enough for a guarded surgical fix.']

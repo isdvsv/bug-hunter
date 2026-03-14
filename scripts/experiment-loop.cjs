@@ -37,6 +37,8 @@ const DEFAULT_CHECKS_SCRIPT = '.bug-hunter/experiment.checks.sh';
 const MAX_STDOUT_BYTES = 50000; // Truncate captured output to prevent memory bloat
 const DEFAULT_MAX_ITERATIONS = 10; // Hard cap — prevents runaway loops
 const MAX_CONSECUTIVE_CRASHES = 3; // Auto-stop after N crashes in a row
+const MIN_TIMEOUT_MS = 1000;       // 1 second minimum for --timeout-ms
+const MAX_TIMEOUT_MS = 3600000;    // 1 hour maximum for --timeout-ms
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -51,12 +53,22 @@ function nowIso() {
 }
 
 function ensureParent(filePath) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to create parent directory for ${filePath}: ${msg}`);
+  }
 }
 
 function appendJsonl(filePath, obj) {
   ensureParent(filePath);
-  fs.appendFileSync(filePath, `${JSON.stringify(obj)}\n`, 'utf8');
+  try {
+    fs.appendFileSync(filePath, `${JSON.stringify(obj)}\n`, 'utf8');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to append to ${filePath}: ${msg}`);
+  }
 }
 
 function readJsonlLines(filePath) {
@@ -217,8 +229,16 @@ function isStopRequested(stopFile) {
 }
 
 function clearStopFile(stopFile) {
-  if (fs.existsSync(stopFile)) {
-    fs.unlinkSync(stopFile);
+  try {
+    if (fs.existsSync(stopFile)) {
+      fs.unlinkSync(stopFile);
+    }
+  } catch (err) {
+    // Ignore ENOENT — file was already removed (race condition)
+    if (err.code !== 'ENOENT') {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to remove stop file ${stopFile}: ${msg}`);
+    }
   }
 }
 
@@ -239,7 +259,12 @@ function canResume(state) {
 }
 
 function recordResume(logPath) {
-  appendJsonl(logPath, { type: 'resume', timestamp: nowMs() });
+  const entry = { type: 'resume', timestamp: nowMs() };
+  const validation = validateExperimentEntry(entry);
+  if (!validation.ok) {
+    throw new Error(`Invalid resume entry: ${validation.errors.join('; ')}`);
+  }
+  appendJsonl(logPath, entry);
 }
 
 // ---------------------------------------------------------------------------
@@ -269,6 +294,44 @@ function validateSecondaryMetrics(state, secondaryMetrics, force) {
     }
   }
 
+  return { ok: errors.length === 0, errors };
+}
+
+// ---------------------------------------------------------------------------
+// Entry validation before JSONL write
+// ---------------------------------------------------------------------------
+
+function validateExperimentEntry(entry) {
+  const errors = [];
+  if (!entry || typeof entry !== 'object') {
+    return { ok: false, errors: ['Entry must be an object'] };
+  }
+  if (!['config', 'result', 'resume'].includes(entry.type)) {
+    errors.push(`Invalid type: ${entry.type}`);
+    return { ok: false, errors };
+  }
+  if (entry.type === 'config') {
+    if (typeof entry.segment !== 'number') errors.push('config entry requires segment (number)');
+    if (!entry.name) errors.push('config entry requires name');
+    if (!entry.metric || !entry.metric.name || !entry.metric.direction) {
+      errors.push('config entry requires metric with name and direction');
+    }
+    if (!Number.isInteger(entry.maxIterations) || entry.maxIterations < 1) {
+      errors.push('config entry requires maxIterations (positive integer)');
+    }
+  }
+  if (entry.type === 'result') {
+    if (typeof entry.segment !== 'number') errors.push('result entry requires segment (number)');
+    if (!['keep', 'discard', 'crash', 'checks_failed'].includes(entry.status)) {
+      errors.push('result entry requires valid status');
+    }
+    if (typeof entry.durationMs !== 'number' || entry.durationMs < 0) {
+      errors.push('result entry requires durationMs (non-negative number)');
+    }
+  }
+  if (entry.type === 'resume') {
+    if (typeof entry.timestamp !== 'number') errors.push('resume entry requires timestamp (number)');
+  }
   return { ok: errors.length === 0, errors };
 }
 
@@ -324,7 +387,7 @@ function runExperiment(command, timeoutMs) {
 
 function runChecks(checksScript) {
   if (!fs.existsSync(checksScript)) {
-    return { passed: true, skipped: true, stdout: '', stderr: '' };
+    return { passed: true, skipped: true, stdout: '', stderr: '', timedOut: false };
   }
   const result = childProcess.spawnSync('bash', [checksScript], {
     encoding: 'utf8',
@@ -332,11 +395,15 @@ function runChecks(checksScript) {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, BUG_HUNTER_EXPERIMENT: '1' }
   });
+  const timedOut = result.signal === 'SIGTERM'
+    || result.signal === 'SIGKILL'
+    || (result.error && result.error.code === 'ETIMEDOUT');
   return {
-    passed: result.status === 0,
+    passed: result.status === 0 && !timedOut,
     skipped: false,
     stdout: truncateOutput(result.stdout || '', MAX_STDOUT_BYTES),
-    stderr: truncateOutput(result.stderr || '', MAX_STDOUT_BYTES)
+    stderr: truncateOutput(result.stderr || '', MAX_STDOUT_BYTES),
+    timedOut
   };
 }
 
@@ -369,7 +436,9 @@ function gitCommitHash() {
       timeout: 10000
     });
     return (result.stdout || '').trim() || 'unknown';
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`Warning: git rev-parse failed: ${msg}`);
     return 'unknown';
   }
 }
@@ -378,12 +447,20 @@ function gitAutoCommit(description) {
   try {
     childProcess.spawnSync('git', ['add', '-A'], { encoding: 'utf8', timeout: 30000 });
     const msg = `experiment: ${description}\n\nResult: keep`;
-    childProcess.spawnSync('git', ['commit', '-m', msg], {
+    const result = childProcess.spawnSync('git', ['commit', '-m', msg], {
       encoding: 'utf8',
       timeout: 30000
     });
-  } catch {
-    // Non-fatal: commit failure doesn't break the experiment loop
+    if (result.status !== 0) {
+      const stderr = (result.stderr || '').trim();
+      console.error(`Warning: git commit exited ${result.status}: ${stderr}`);
+      return { ok: false, error: stderr || `exit code ${result.status}` };
+    }
+    return { ok: true, error: '' };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`Warning: git auto-commit failed: ${msg}`);
+    return { ok: false, error: msg };
   }
 }
 
@@ -465,6 +542,11 @@ function cmdInit(args) {
     }
   };
 
+  const configValidation = validateExperimentEntry(configEntry);
+  if (!configValidation.ok) {
+    console.error(`Invalid config entry: ${configValidation.errors.join('; ')}`);
+    process.exit(1);
+  }
   appendJsonl(logPath, configEntry);
   console.log(JSON.stringify({
     ok: true,
@@ -498,7 +580,10 @@ function cmdRun(args) {
   }
 
   const stopFile = named['stop-file'] || DEFAULT_STOP_FILE;
-  const timeoutMs = Number.parseInt(named['timeout-ms'] || '', 10) || 120000;
+  const rawTimeout = Number.parseInt(named['timeout-ms'] || '', 10);
+  const timeoutMs = Number.isFinite(rawTimeout) && rawTimeout >= MIN_TIMEOUT_MS && rawTimeout <= MAX_TIMEOUT_MS
+    ? rawTimeout
+    : 120000;
   const checksScript = named['checks-script'] || DEFAULT_CHECKS_SCRIPT;
 
   // GUARDRAIL: Check stop file before every run
@@ -537,6 +622,7 @@ function cmdRun(args) {
     passed: runResult.passed,
     checksPassed: checksResult.passed,
     checksSkipped: checksResult.skipped,
+    checksTimedOut: checksResult.timedOut || false,
     durationMs: runResult.durationMs,
     exitCode: runResult.exitCode,
     timedOut: runResult.timedOut,
@@ -599,6 +685,13 @@ function cmdLog(args) {
       console.error('Invalid --secondary JSON');
       process.exit(1);
     }
+    // Validate all secondary metric values are finite numbers
+    for (const [key, val] of Object.entries(secondaryMetrics)) {
+      if (typeof val !== 'number' || !Number.isFinite(val)) {
+        console.error(`Invalid secondary metric value for "${key}": expected a number, got ${typeof val}`);
+        process.exit(1);
+      }
+    }
   }
 
   const state = reconstructState(logPath);
@@ -620,8 +713,10 @@ function cmdLog(args) {
 
   // Auto-commit on keep (pi-autoresearch pattern)
   let commit = 'unknown';
+  let commitOk = true;
   if (status === 'keep' && autoCommit) {
-    gitAutoCommit(description || `experiment #${state.totalRuns + 1}`);
+    const commitResult = gitAutoCommit(description || `experiment #${state.totalRuns + 1}`);
+    commitOk = commitResult.ok;
     commit = gitCommitHash();
   } else {
     commit = gitCommitHash();
@@ -651,6 +746,11 @@ function cmdLog(args) {
     durationMs: Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : 0
   };
 
+  const resultValidation = validateExperimentEntry(resultEntry);
+  if (!resultValidation.ok) {
+    console.error(`Invalid result entry: ${resultValidation.errors.join('; ')}`);
+    process.exit(1);
+  }
   appendJsonl(logPath, resultEntry);
 
   // Determine if this is the new best
@@ -674,6 +774,7 @@ function cmdLog(args) {
     delta,
     isBest,
     commit,
+    commitOk,
     kept: state.kept + (status === 'keep' ? 1 : 0),
     discarded: state.discarded + (status === 'discard' ? 1 : 0),
     crashed: state.crashed + (status === 'crash' ? 1 : 0),

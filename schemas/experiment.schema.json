@@ -57,5 +57,19 @@
       "minimum": 1
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "config" } } },
+      "then": { "required": ["type", "segment", "name", "metric", "maxIterations"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "result" } } },
+      "then": { "required": ["type", "segment", "status", "durationMs"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "resume" } } },
+      "then": { "required": ["type", "timestamp"] }
+    }
+  ]
 }

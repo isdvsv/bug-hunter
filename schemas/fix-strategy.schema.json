@@ -81,7 +81,7 @@
           },
           "maxSeverity": {
             "type": "string",
-            "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "Critical", "High", "Medium", "Low"]
+            "enum": ["Critical", "High", "Medium", "Low"]
           },
           "summary": { "type": "string", "minLength": 1 },
           "recommendedAction": { "type": "string", "minLength": 1 },

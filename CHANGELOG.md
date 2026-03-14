@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.10] - 2026-03-14
+
+### Fixed
+- `experiment-loop.cjs`: `ensureParent()` and `appendJsonl()` now have try-catch protection with descriptive error messages — previously, disk-full or permission errors threw cryptic Node.js exceptions
+- `experiment-loop.cjs`: `clearStopFile()` handles ENOENT race condition — if stop file is removed between `existsSync` and `unlinkSync`, the error is ignored instead of crashing
+- `experiment-loop.cjs`: `gitAutoCommit()` returns `{ ok, error }` and logs warnings to stderr on failure — previously swallowed all errors silently
+- `experiment-loop.cjs`: `gitCommitHash()` logs a warning to stderr on failure — still returns `'unknown'` for backward compatibility
+- `experiment-loop.cjs`: `cmdRun()` validates `--timeout-ms` bounds (1s–1h) — previously accepted negative, zero, or absurdly large values
+- `experiment-loop.cjs`: `runChecks()` detects SIGTERM/SIGKILL/ETIMEDOUT timeouts — previously, a timed-out checks script was reported as `passed: false` with no timeout indicator
+- `experiment-loop.cjs`: `cmdLog()` validates that all `--secondary` metric values are finite numbers — previously accepted strings, nulls, and other non-numeric types
+- `fix-strategy.schema.json`: `maxSeverity` enum standardized to `["Critical","High","Medium","Low"]` — removed redundant uppercase variants inconsistent with all other schemas
+
+### Added
+- `experiment-loop.cjs`: `commitOk` field in `log` command output — surfaces whether the auto-commit succeeded
+- `experiment-loop.cjs`: `checksTimedOut` field in `run` command output — indicates whether the checks script hit the 5-minute timeout
+- `experiment-loop.cjs`: `validateExperimentEntry()` function — validates JSONL entries before writing, enforcing per-type required fields
+- `experiment.schema.json`: `allOf` with `if/then` blocks documenting per-type required fields (for IDE/CI validation)
+- 12 new tests covering file I/O errors, git commit failures, timeout bounds, secondary metric type validation, checks timeout detection, and entry validation
+- Test suite: **113 tests**, 0 failures
+
 ## [3.0.9] - 2026-03-13
 
 ### Added

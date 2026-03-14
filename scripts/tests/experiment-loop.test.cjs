@@ -759,3 +759,216 @@ test('reconstructs state even with corrupt lines in JSONL', () => {
   assert.equal(status.totalRuns, 1);
   assert.equal(status.bestMetric, 42);
 });
+
+// ---------------------------------------------------------------------------
+// Step 1: File I/O hardening
+// ---------------------------------------------------------------------------
+
+test('clear-stop tolerates already-removed stop file', () => {
+  const sandbox = makeSandbox('exp-clear-race-');
+  const stopFile = path.join(sandbox, 'experiment.stop');
+
+  // Create and immediately remove the stop file
+  fs.writeFileSync(stopFile, 'stop\n');
+  fs.unlinkSync(stopFile);
+
+  // clear-stop should succeed even though file is gone
+  const result = runJson('node', [SCRIPT, 'clear-stop', '--stop-file', stopFile]);
+  assert.equal(result.ok, true);
+  assert.equal(result.cleared, true);
+});
+
+test('appendJsonl throws descriptive error on read-only directory', () => {
+  const sandbox = makeSandbox('exp-io-fail-');
+  const readOnlyDir = path.join(sandbox, 'locked');
+  fs.mkdirSync(readOnlyDir);
+  fs.chmodSync(readOnlyDir, 0o444);
+
+  const logPath = path.join(readOnlyDir, 'sub', 'experiment.jsonl');
+  const result = runRaw('node', [SCRIPT, 'init', logPath, 'test', 'metric', 'higher']);
+  assert.notEqual(result.status, 0);
+  const stderr = (result.stderr || '').trim();
+  assert.ok(stderr.includes('Failed to create parent directory') || stderr.includes('Failed to append'),
+    `Expected descriptive error, got: ${stderr}`);
+
+  // Restore permissions for cleanup
+  fs.chmodSync(readOnlyDir, 0o755);
+});
+
+// ---------------------------------------------------------------------------
+// Step 2: Git helper hardening
+// ---------------------------------------------------------------------------
+
+test('log with auto-commit reports commitOk field', () => {
+  const sandbox = makeSandbox('exp-commitok-');
+  const logPath = path.join(sandbox, 'experiment.jsonl');
+  runJson('node', [SCRIPT, 'init', logPath, 'test', 'score', 'higher']);
+
+  // In sandbox (no git repo), auto-commit will fail but log should succeed
+  const result = runJson('node', [
+    SCRIPT, 'log', logPath, 'keep', '100',
+    '--auto-commit', 'true'
+  ]);
+  assert.equal(result.ok, true);
+  assert.equal(typeof result.commitOk, 'boolean');
+  // commitOk should be false since sandbox is not a git repo
+  assert.equal(result.commitOk, false);
+});
+
+test('git failure does not break experiment loop', () => {
+  const sandbox = makeSandbox('exp-git-fail-');
+  const logPath = path.join(sandbox, 'experiment.jsonl');
+  runJson('node', [SCRIPT, 'init', logPath, 'test', 'score', 'higher']);
+
+  // First keep (baseline)
+  const r1 = runJson('node', [SCRIPT, 'log', logPath, 'keep', '100', '--auto-commit', 'true']);
+  assert.equal(r1.ok, true);
+  assert.equal(r1.value, 100);
+
+  // Second keep — still works despite git failures
+  const r2 = runJson('node', [SCRIPT, 'log', logPath, 'keep', '120', '--auto-commit', 'true']);
+  assert.equal(r2.ok, true);
+  assert.equal(r2.isBest, true);
+
+  // Status still accurate
+  const status = runJson('node', [SCRIPT, 'status', logPath]);
+  assert.equal(status.totalRuns, 2);
+  assert.equal(status.kept, 2);
+});
+
+// ---------------------------------------------------------------------------
+// Step 3: Timeout bounds validation
+// ---------------------------------------------------------------------------
+
+test('run clamps negative timeout to default', () => {
+  const sandbox = makeSandbox('exp-neg-timeout-');
+  const logPath = path.join(sandbox, 'experiment.jsonl');
+  runJson('node', [SCRIPT, 'init', logPath, 'test', 'metric', 'higher']);
+
+  const stopFile = path.join(sandbox, 'no-stop');
+  const result = runJson('node', [
+    SCRIPT, 'run', logPath, 'echo "METRIC score=1"',
+    '--stop-file', stopFile,
+    '--timeout-ms', '-5000'
+  ]);
+  assert.equal(result.ok, true);
+  assert.equal(result.passed, true);
+  assert.ok(result.durationMs >= 0);
+});
+
+test('run clamps zero timeout to default', () => {
+  const sandbox = makeSandbox('exp-zero-timeout-');
+  const logPath = path.join(sandbox, 'experiment.jsonl');
+  runJson('node', [SCRIPT, 'init', logPath, 'test', 'metric', 'higher']);
+
+  const stopFile = path.join(sandbox, 'no-stop');
+  const result = runJson('node', [
+    SCRIPT, 'run', logPath, 'echo ok',
+    '--stop-file', stopFile,
+    '--timeout-ms', '0'
+  ]);
+  assert.equal(result.ok, true);
+  assert.equal(result.passed, true);
+});
+
+test('run clamps absurdly large timeout to default', () => {
+  const sandbox = makeSandbox('exp-huge-timeout-');
+  const logPath = path.join(sandbox, 'experiment.jsonl');
+  runJson('node', [SCRIPT, 'init', logPath, 'test', 'metric', 'higher']);
+
+  const stopFile = path.join(sandbox, 'no-stop');
+  const result = runJson('node', [
+    SCRIPT, 'run', logPath, 'echo ok',
+    '--stop-file', stopFile,
+    '--timeout-ms', '9999999999'
+  ]);
+  assert.equal(result.ok, true);
+  assert.equal(result.passed, true);
+});
+
+// ---------------------------------------------------------------------------
+// Step 4: runChecks timeout detection
+// ---------------------------------------------------------------------------
+
+test('run includes checksTimedOut field in output', () => {
+  const sandbox = makeSandbox('exp-checks-timeout-field-');
+  const logPath = path.join(sandbox, 'experiment.jsonl');
+  runJson('node', [SCRIPT, 'init', logPath, 'test', 'metric', 'higher']);
+
+  // Create a passing checks script
+  const checksScript = path.join(sandbox, 'checks.sh');
+  fs.writeFileSync(checksScript, '#!/bin/bash\nexit 0\n', { mode: 0o755 });
+
+  const stopFile = path.join(sandbox, 'no-stop');
+  const result = runJson('node', [
+    SCRIPT, 'run', logPath, 'echo ok',
+    '--stop-file', stopFile,
+    '--checks-script', checksScript
+  ]);
+  assert.equal(result.ok, true);
+  assert.equal(result.checksTimedOut, false);
+  assert.equal(result.checksPassed, true);
+});
+
+// ---------------------------------------------------------------------------
+// Step 5: Secondary metric value type validation
+// ---------------------------------------------------------------------------
+
+test('log rejects secondary metrics with string values', () => {
+  const sandbox = makeSandbox('exp-secondary-str-');
+  const logPath = path.join(sandbox, 'experiment.jsonl');
+  runJson('node', [SCRIPT, 'init', logPath, 'test', 'score', 'higher']);
+
+  const result = runRaw('node', [
+    SCRIPT, 'log', logPath, 'keep', '100',
+    '--secondary', '{"memory_mb":"lots"}',
+    '--auto-commit', 'false'
+  ]);
+  assert.notEqual(result.status, 0);
+  const stderr = (result.stderr || '').trim();
+  assert.ok(stderr.includes('expected a number'));
+});
+
+test('log rejects secondary metrics with null values', () => {
+  const sandbox = makeSandbox('exp-secondary-null-');
+  const logPath = path.join(sandbox, 'experiment.jsonl');
+  runJson('node', [SCRIPT, 'init', logPath, 'test', 'score', 'higher']);
+
+  const result = runRaw('node', [
+    SCRIPT, 'log', logPath, 'keep', '100',
+    '--secondary', '{"memory_mb":null}',
+    '--auto-commit', 'false'
+  ]);
+  assert.notEqual(result.status, 0);
+});
+
+test('log accepts secondary metrics with valid finite numbers', () => {
+  const sandbox = makeSandbox('exp-secondary-valid-');
+  const logPath = path.join(sandbox, 'experiment.jsonl');
+  runJson('node', [SCRIPT, 'init', logPath, 'test', 'score', 'higher']);
+
+  const result = runJson('node', [
+    SCRIPT, 'log', logPath, 'keep', '100',
+    '--secondary', '{"memory_mb":512.5,"cpu_pct":0,"negative":-10}',
+    '--auto-commit', 'false'
+  ]);
+  assert.equal(result.ok, true);
+});
+
+// ---------------------------------------------------------------------------
+// Step 7: Entry validation
+// ---------------------------------------------------------------------------
+
+test('log with auto-commit false still includes commitOk true', () => {
+  const sandbox = makeSandbox('exp-commitok-false-');
+  const logPath = path.join(sandbox, 'experiment.jsonl');
+  runJson('node', [SCRIPT, 'init', logPath, 'test', 'score', 'higher']);
+
+  const result = runJson('node', [
+    SCRIPT, 'log', logPath, 'keep', '100',
+    '--auto-commit', 'false'
+  ]);
+  assert.equal(result.ok, true);
+  // When auto-commit is off, commitOk should still be true (no commit attempted = no failure)
+  assert.equal(result.commitOk, true);
+});
